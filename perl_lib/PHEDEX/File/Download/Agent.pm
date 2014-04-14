@@ -11,10 +11,15 @@ use PHEDEX::Core::Timing;
 use PHEDEX::Core::DB;
 use PHEDEX::Error::Constants;
 
+use feature qw(switch);
 use List::Util qw(min max sum);
 use Data::Dumper;
+use LWP::Simple;
 use POSIX;
 use POE;
+
+$Data::Dumper::Terse = 1;
+$Data::Dumper::Indent = 1;
 
 sub new
 {
@@ -24,7 +29,25 @@ sub new
 		  NODES => undef,		# Nodes to operate for
 	  	  IGNORE_NODES => [],		# TMDB nodes to ignore
 	  	  ACCEPT_NODES => [],		# TMDB nodes to accept
-
+	  	  
+	  	  NODE_MAPPING                  => undef,       # NodeID -> Node name	  	  
+	  	  CIRCUIT_AGENT_MAP             => {},          # IPs of all circuit agents                 (node -> IP)
+	  	  CIRCUIT_LOOKUP                => 'http://monalisa.cern.ch/DYNES/conf/agentsLookup',
+	  	  AVAILABLE_LINKS               => {},          # Links used for transfers                  (link -> )
+	  	  LINKS_WITH_CIRCUITS           => {},          # Links that support circuits               (link -> )
+	  	  CIRCUITS_REQUESTED            => {},          # Circuits being requested                  (link -> Hash) 
+	  	  CIRCUITS_ESTABLISHED          => {},          # Circuits established                      (link -> Circuit (TODO: Hash -> object))
+	  	  CIRCUITS_REQUESTS_FAILED      => {},          # Circuits whose requests failed            (link -> time)
+                    
+          CIRCUIT_THRESHOLD             => 5*3600,      # Duration of work needed for a circuit              
+          RECONSIDER_CIRCUIT_AFTER      => 3600,        # in seconds
+          CIRCUIT_REQUEST_TIMEOUT       => 300,         # in seconds
+          CIRCUIT_DEFAULT_LIFETIME      => undef,         # in seconds 
+          
+          DELAY_SETUP_CHECK             => 30,          # in seconds
+          DELAY_META_UPDATE             => 60,          # in seconds
+          DELAY_WORKLOAD_CHECK          => 60,          # in seconds           
+          
 		  VALIDATE_COMMAND => undef,	# pre/post download validation command
 		  DELETE_COMMAND => undef,	# pre/post download deletion command
 		  PREVALIDATE => 1,             # flag to prevalidate files with VALIDATE_COMMAND
@@ -33,7 +56,7 @@ sub new
 		  TIMEOUT => 600,		# Maximum execution time
 		  NJOBS => 10,			# Max number of utility processes
 		  WAITTIME => 3600,		# Nap length between idle() cycles
-
+		  
 		  BACKEND_TYPE => undef,	# Backend type
 
 		  TASKS => {},                  # Tasks in memory
@@ -50,11 +73,14 @@ sub new
 		  BOOTTIME => time(),		# Time this agent started
 		  LOAD_DROPBOX_WORKDIRS	=> 1,	# This agent requires the working directories
 		);
+		
     my %args = (@_);
 #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
     my $self = $class->SUPER::new(%args);
 
+    $self->{CIRCUITDIR} = $self->{DROPDIR}."/circuit" unless defined $self->{CIRCUITDIR};
+    
     # Create a JobManager
     $self->{JOBMANAGER} = PHEDEX::Core::JobManager->new (
 						NJOBS	=> $self->{NJOBS},
@@ -101,7 +127,8 @@ sub _poe_init
   $self->defineWorkflow();
 
   my @poe_subs = qw( advertise_self verify_tasks purge_lost_tasks
-		     fill_backend maybe_disconnect
+		     fill_backend maybe_disconnect 
+		     check_workload update_circuit_meta request_circuit handle_request handle_request_timeout teardown_circuit check_circuit_setup
 		     sync_tasks report_tasks update_tasks fetch_tasks
 		     start_task finish_task
 		     prevalidate_task prevalidate_done
@@ -120,7 +147,11 @@ sub _poe_init
   $kernel->yield('purge_lost_tasks');
   $kernel->yield('fill_backend');
   $kernel->yield('sync_tasks');
+  $kernel->yield('update_circuit_meta');
+  $kernel->yield('check_circuit_setup');
+  $kernel->yield('check_workload');
   $kernel->yield('maybe_disconnect');
+    
 }
 
 # XXX TODO:  Find a more beutiful way to protect DB-interacting code from transient failures.
@@ -240,7 +271,7 @@ eval
 	   push(@{$eargs{$arg++}}, $$tasks{$task}{SPACE_TOKEN});
 	   push(@{$eargs{$arg++}}, $xferlog);
 	   push(@{$eargs{$arg++}}, $$tasks{$task}{LOG_DETAIL});
-	   push(@{$eargs{$arg++}}, $$tasks{$task}{LOG_VALIDATE});
+	   push(@{$eargs{$arg++}}, $$tasks{$task}{LOG_VALIDATE});	   
        }
 
        if ((++$rows % 100) == 0)
@@ -268,6 +299,401 @@ eval
        }
    }
 }; $self->rollbackOnError();
+}
+
+# Check which links currently support circuits
+sub update_circuit_meta
+{
+    my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION ];
+    $self->delay_max($kernel, 'update_circuit_meta', $self->{DELAY_META_UPDATE});
+         
+    $self->{LINKS_WITH_CIRCUITS} = _get_link_mapping();
+    $self->{CIRCUIT_AGENT_MAP} = _get_agent_mapping();
+}
+
+sub check_circuit_setup
+{
+    my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION];    
+    my (@circuitsRequested, @circuitsEstablished);
+      
+    $self->delay_max($kernel, 'check_circuit_setup', $self->{DELAY_SETUP_CHECK});
+                
+    # Scenarios we need to check for:
+    # 1) download agent crashed 
+    # 1.1) internal data is lost, but file(s) exist in circuits/requested
+    # 1.2) internal data is lost, but file(s) exist in circuits/established
+    # 2) circuit requests had failed some time ago, should give them another chance 
+    # 3? Should we also check for the case when someone deliberately deletes the status data?
+
+    # 1.1             
+    if (&getdir($self->{CIRCUITDIR}."/requested", \@circuitsRequested)) {    
+        foreach my $circuitFile (@circuitsRequested) {
+            my $circuit = &evalinfo($self->{CIRCUITDIR}."/requested".'/'.$circuitFile);        
+            if (defined $circuit && 
+                defined $circuit->{LINK} && 
+                ! defined $self->{CIRCUITS_REQUESTED}{$circuit->{LINK}}) {
+                $self->Logmsg("Found previous circuit request - cancelling it...");
+                remove_circuit_request($self, $circuit);
+            }
+        }
+    }
+                            
+    # 1.2    
+    if (&getdir($self->{CIRCUITDIR}."/established", \@circuitsEstablished)) {    
+        foreach my $circuitFile (@circuitsEstablished) {
+            my $circuit = &evalinfo($self->{CIRCUITDIR}."/established".'/'.$circuitFile);                   
+            if (defined $circuit && defined $circuit->{LINK} && ! defined $self->{CIRCUITS_ESTABLISHED}{$circuit->{LINK}}) {
+                if (! defined $circuit->{EXPIRATION_TIME} ||
+                    (defined $circuit->{EXPIRATION_TIME} && $circuit->{EXPIRATION_TIME} > &mytimeofday())) {
+                    $self->Logmsg("Found established circuit. Using it");
+                    $self->{CIRCUITS_ESTABLISHED}{$circuit->{LINK}} = $circuit;                    
+                    $kernel->delay('teardown_circuit', $circuit->{LIFETIME}, $circuit) unless !defined $circuit->{LIFETIME};        
+                } else {
+                    #TODO: Should we also attempt to cancel a circuit like this?
+                    unlink $self->{CIRCUITDIR}."/established".'/'.$circuitFile;
+                }
+                            
+            }
+        }
+    }
+                               
+    # 2             
+    foreach my $link (keys %{$self->{CIRCUITS_REQUESTS_FAILED}}) {
+        my $circuit = $self->{CIRCUITS_REQUESTS_FAILED}{$link};
+        if ($circuit->{REQUESTED_TIME} < &mytimeofday() - $self->{RECONSIDER_CIRCUIT_AFTER}) {
+            delete $self->{CIRCUITS_REQUESTS_FAILED}{$link};
+            $self->Logmsg("Reconsidering $link...");
+        }
+    }
+}
+
+
+# TODO: We need to replace this with the real location of the mapping
+sub _get_link_mapping
+{
+    my $mapping;
+    
+    open MAPPING, "/data/link_mapping.txt";
+    while (<MAPPING>) {
+        chomp;
+        my ($key, $value) = split /->/;
+        $mapping->{$_} = [$key, $value];
+    }
+    close MAPPING;
+    
+    $mapping;
+}
+
+# TODO: We need to replace this with the url containing the ips of the agents
+# my $lookupResults = get($self->{CIRCUIT_LOOKUP}); 
+sub _get_agent_mapping 
+{
+    my $mapping;
+    
+    open MAPPING, "/data/agent_mapping.txt";
+    while (<MAPPING>) {
+        chomp;
+        my ($key, $value) = split /->/;
+        $mapping->{$key} = $value;
+    }
+    close MAPPING;
+    
+    $mapping;
+}
+
+# Check the available workload (both local and in DB) per link
+sub check_workload
+{
+    my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION ];
+    $self->delay_max($kernel, 'check_workload', $self->{DELAY_WORKLOAD_CHECK});
+    
+    return if (! defined $self->{TASKS} || ! keys %{$self->{TASKS}});
+                   
+    my $tasks = $self->{TASKS};     
+    
+    my ($now, $linksInformation) = (&mytimeofday(), {});
+    my $linksWPendingTasks = 0;       
+    
+    # Go through all the tasks and create the following structure
+    # NodePair    -> PENDING_BYTES    -> Total bytes that are pending for this link
+    #                                    This is used to estimate the amount of work remaining
+    #             -> DONE_TASKS       -> Structure containing the finished tasks grouped by jobID
+    #                                    This is used to get the average rates
+    #             -> AVERAGE_RATE     -> Either gotten from recently finished jobs or from DB
+    #            
+    
+    foreach my $task (values %$tasks) {
+                  
+        my $nodePair = "$task->{FROM_NODE}->$task->{TO_NODE}";                      
+        # If the task was finished, successfully and not older than 2hrs
+        if ($task->{FINISHED} &&
+            $task->{FINISHED} > &mytimeofday() - 2*3600 && 
+            $task->{REPORT_CODE} == 0 &&
+            $task->{XFER_CODE} == 0) {
+                        
+            # Store all the finish tasks by JOBID
+            # All tasks in one job share the same start time and finish time
+            # We'll use this info to get the average transfer rate for a particular job                 
+            # TODO: Pretty ugly structure - could create a new object for this  
+            push(@{$linksInformation->{$nodePair}{DONE_TASKS}{$task->{JOBID}}}, $task);    
+        }
+        
+        # From here on, only consider jobs that are pending
+        if ($task->{STARTED} || $task->{FINISHED}) { 
+            next;      
+        }
+        
+        # This is needed for the estimation of the work that remains to be done
+        # TODO: Maybe we'll need to also consider priorities                
+        $linksInformation->{$nodePair}{PENDING_BYTES} += $task->{FILESIZE};
+        $linksWPendingTasks++;
+        
+        $self->{AVAILABLE_LINKS}{$nodePair} = [$task->{FROM_NODE}, $task->{TO_NODE}];
+        $self->{NODE_MAPPING}{$task->{FROM_NODE_ID}} = $task->{FROM_NODE};
+        $self->{NODE_MAPPING}{$task->{TO_NODE_ID}} = $task->{TO_NODE};
+    }     
+    
+    # If there are no pending links it makes no sense to continue
+    return if ($linksWPendingTasks == 0);
+        
+    # Loop through all the links
+    foreach my $linkID (keys %$linksInformation) {                      
+        my ($averageRate, $doneBytes, $transferDuration);        
+        
+        my $linkInfo = $linksInformation->{$linkID};                                                                            
+        my $doneTasks =  $linkInfo->{DONE_TASKS};        
+        
+        next if (!defined $doneTasks || scalar $doneTasks == 0);
+        
+        # Loop through all the jobs in DONE_TASKS                                          
+        foreach my $jobID (keys %$doneTasks) {                         
+            my ($job, $timeDiff) = ($doneTasks->{$jobID} );
+
+            # Loop through all the tasks that were started at $timeSlot
+            foreach my $task (@{$job}) {
+                $doneBytes += $task->{FILESIZE};                 
+                $timeDiff += $task->{FINISHED} - $task->{STARTED};
+            }     
+                        
+            $transferDuration += $timeDiff / scalar @{$job};           
+        }
+        
+        # TODO: It would also be interesting to calculate the variance of average rates
+        # bewtween different jobs on the same link. It might be that even if the circuit would not
+        # provide significant extra BW, it might be nice to have transfer rates with lower variance  
+        $averageRate = $doneBytes / $transferDuration; # in Bytes/second
+        
+        if ($averageRate > 0) {                    
+            $linksInformation->{$linkID}{AVERAGE_RATE} = $averageRate;      
+            $self->Logmsg("Calculated an average rate of $averageRate (bytes/second) for link: $linkID based on done tasks");
+        }               
+    }
+    
+    # Also check for statistics from T_ADM_LINK_PARAM 
+    # TODO: We should restrict the query to only the pair of nodes for which we don't have fresh statistics           
+    $self->Logmsg("Getting stats from DB for all nodes");
+    my @nodes = join(',', values %{$self->{NODES_ID}});
+    my $rateQuery = &dbexec($$self{DBH}, 
+                qq{
+                    select from_node, to_node,
+                           xfer_rate, xfer_latency
+                    from t_adm_link_param
+                    where to_node in (@nodes)
+                });                                            
+                                      
+    while (my $row = $rateQuery->fetchrow_hashref()) {
+        if (defined $row->{XFER_RATE} && $row->{XFER_RATE} > 0) {
+            my $from_node = $self->{NODE_MAPPING}{$row->{FROM_NODE}};
+            my $to_node = $self->{NODE_MAPPING}{$row->{TO_NODE}};
+            #TODO: DO we need to check to/from nodes?
+            my $nodePair = "$from_node->$to_node";
+            if (!defined $linksInformation->{$nodePair}{AVERAGE_RATE}) {
+                $linksInformation->{$nodePair}{AVERAGE_RATE} = $row->{XFER_RATE}; 
+            }                          
+        }        
+    }    
+    
+    my @circuitsToRequest;
+    
+    # Check to see if there are any links for which it's worth requesting a circuit
+    # For each link
+    foreach my $linkID (keys %$linksInformation) {
+        my $linkData = $linksInformation->{$linkID};
+
+        if (!defined $linkData->{AVERAGE_RATE} || 
+            !defined $linkData->{PENDING_BYTES}) {
+            next;
+        }
+        
+        my $pendingWork = $linkData->{PENDING_BYTES} / $linkData->{AVERAGE_RATE};         
+        $self->Logmsg("Pending work for $linkID is $pendingWork seconds");
+        
+        # If the link has a lot of pending data, it support circuits,
+        # we haven't already requested a circuit for it, no circuit
+        # has yet been established, and the request didn't fail
+        # in the last RECONSIDER_CIRCUIT_AFTER seconds
+        # add it to circuits worth requesting
+                
+        # TODO: we should also check the files in case this event launches before the "check_circuit_setup"
+        # We could also offload these checks to "request_circuit"         
+        if ($pendingWork > $self->{CIRCUIT_THRESHOLD} &&
+            $self->{LINKS_WITH_CIRCUITS}{$linkID} &&
+            ! defined $self->{CIRCUITS_REQUESTED}{$linkID} &&
+            ! defined $self->{CIRCUITS_ESTABLISHED}{$linkID} &&
+            ! defined $self->{CIRCUITS_REQUESTS_FAILED}{$linkID} ) {
+                push(@circuitsToRequest, $linkID);
+        }
+    }                    
+    
+    if  (scalar @circuitsToRequest > 0) {
+        foreach my $link (@circuitsToRequest) {
+            $kernel->post($session, 'request_circuit', $link, $self->{CIRCUIT_DEFAULT_LIFETIME}) ;
+        }    
+    }                 
+}
+
+sub circuit_file_name {
+    my ($circuit) = @_;
+    return $circuit->{PHEDEX_FROM_NODE}."to".$circuit->{PHEDEX_TO_NODE}.$circuit->{REQUESTED_TIME};
+}
+
+sub request_circuit 
+{
+    my ( $self, $kernel, $session, $link, $lifetime) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1 ];
+    
+    if (!defined $link) {
+        $self->Logmsg("Provided link is invalid - will not attempt a circuit request");
+        return -1;
+    }
+       
+    defined $lifetime ? $self->Logmsg("Attempting to request a circuit for $link with a lifetime of $lifetime seconds") :
+                        $self->Logmsg("Attempting to request a circuit for $link. End of life managed by IDC");
+                
+                
+    
+    my ($circuitDir, $circuitDirReq, $circuitDirEst) = (1, 1, 1);
+    
+    # Check to see if the state folders for circuits are found in workdir. If not create them    
+    $circuitDir = mkdir($self->{CIRCUITDIR}) unless -e "$self->{CIRCUITDIR}";
+    $circuitDirReq = mkdir($self->{CIRCUITDIR}."/requested") unless -e "$self->{CIRCUITDIR}/requested";
+    $circuitDirEst = mkdir($self->{CIRCUITDIR}."/established") unless -e "$self->{CIRCUITDIR}/established";
+
+    if ( !$circuitDir || !$circuitDirReq || !$circuitDirEst) {
+        $self->Logmsg("Cannot create state folders... Won't request anything");
+        return -1;
+    }    
+    
+    ### Requesting circuit
+    
+    my ($circuit, $requestedTime) = ({}, &mytimeofday());
+    
+    # Creating circuit hash (TODO: This hash should be a proper PERL object)    
+    $circuit->{LINK} = $link;
+    $circuit->{PHEDEX_FROM_NODE} = $self->{LINKS_WITH_CIRCUITS}{$link}[0];
+    $circuit->{PHEDEX_TO_NODE} = $self->{LINKS_WITH_CIRCUITS}{$link}[1];
+    $circuit->{REQUESTED_TIME} = $requestedTime;
+    $circuit->{LIFETIME} = $lifetime;
+    $circuit->{BANDWIDTH} = $lifetime;
+    
+    # Saving state to file
+    $self->Logmsg("Saving circuit request state");
+    my $circuitFile = "$self->{CIRCUITDIR}/requested/".circuit_file_name($circuit);
+    if (!&output($circuitFile, Dumper($circuit))) {
+        $self->Logmsg("Cannot save circuit request data");
+        return -1;
+    };
+    
+    # Remember which circuit we requested
+    $self->{CIRCUITS_REQUESTED}{$link} = $circuit;
+    # Setup timeout handle
+    $kernel->delay('handle_request_timeout', $self->{CIRCUIT_REQUEST_TIMEOUT}, $circuit);
+    
+    
+    # TODO: Actually request a circuit and handle callback; 
+    sleep(10);              
+    $kernel->post($session, 'handle_request', $circuit, 1, '128.142.135.112', '137.138.42.16');                
+}
+
+sub handle_request {
+    my ($self, $kernel, $session, $circuit, $success, $from_ip, $to_ip) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2, ARG3];         
+    
+    if (!defined $circuit || !defined $success) {
+        $self->Logmsg("Don't know how to handle this request");
+        return;
+    }
+    
+    my $link = $circuit->{LINK};
+    
+    # Remove circuit request from state dir and from memory
+    remove_circuit_request($self, $circuit);   
+    
+    # If request failed, add it to CIRCUITS_REQUESTS_FAILED hash
+    if (! $success) {
+        $self->Logmsg("Circuit request for link  failed");
+        $self->{CIRCUITS_REQUESTS_FAILED}{$link} = $circuit;
+        return -1;                       
+    }      
+    
+    # Circuit request succeeded
+    $self->Logmsg("Circuit request succeded");     
+    $circuit->{ESTABLISHED_TIME} = &mytimeofday();
+    $circuit->{EXPIRATION_TIME} = &mytimeofday() + $circuit->{LIFETIME} unless ! defined $circuit->{LIFETIME};
+    $circuit->{CIRCUIT_FROM_IP} = $from_ip;
+    $circuit->{CIRCUIT_TO_IP} = $to_ip;
+
+    $self->Logmsg("Saving circuit state");
+    my $circuitFile = "$self->{CIRCUITDIR}/established/".circuit_file_name($circuit);
+    if (!&output($circuitFile, Dumper($circuit))) {
+        $self->Logmsg("Cannot save circuit request data");
+        return -1;
+    };
+    
+    $self->{CIRCUITS_ESTABLISHED}{$link} = $circuit;
+    if (defined $circuit->{LIFETIME}) {
+        $self->Logmsg("Circuit has an expiration date. Starting countdown to teardown");
+        $kernel->delay('teardown_circuit', $circuit->{LIFETIME}, $circuit);
+    }                  
+}
+
+sub handle_request_timeout
+{
+    my ( $self, $kernel, $session, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0];
+        
+    if (!defined $circuit) {
+        $self->Logmsg("Provided circuit is invalid");
+        return;
+    }
+    
+    # If after the timeout, the circuit is still in CIRCUITS_REQUESTED
+    # cancel the request
+    if (defined $self->{CIRCUITS_REQUESTED}{$circuit->{LINK}}) {
+        remove_circuit_request($self, $circuit);       
+        $self->Logmsg("Request took too long to complete");        
+    }
+}
+
+sub remove_circuit_request {
+    my ($self, $circuit) = @_;
+    # TODO: Cancel the request     
+    delete $self->{CIRCUITS_REQUESTED}{$circuit->{LINK}};
+    unlink "$self->{CIRCUITDIR}/requested/".circuit_file_name($circuit);
+}
+
+sub teardown_circuit {    
+    my ( $self, $kernel, $session, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0 ];
+
+    if (!defined $circuit) {
+        $self->Logmsg("Provided circuit is invalid");
+        return;
+    }
+    
+    # TODO: Wait for all the tasks to finish
+    # CALL: TEARDOWN API
+    
+    $self->Logmsg("Tearing down circuit for $circuit->{LINK}");
+    
+    delete $self->{CIRCUITS_ESTABLISHED}{$circuit->{LINK}};
+    unlink "$self->{CIRCUITDIR}/established/".circuit_file_name($circuit);    
 }
 
 # Fetch new tasks from the database.
@@ -745,10 +1171,13 @@ sub fill_backend
 
     # Send files to transfer.
     # Note we use synchronous calls here in order to avoid race conditions with this function.
+    
+    $self->Logmsg("Calling PhEDEx:Transfer:Core->start_batch $from -> $to with ", scalar @{$todo{$to}{$from}}, " tasks");
     my ($jobid, $jobdir, $jobtasks) = $kernel->call($session, 'start_batch', $todo{$to}{$from});
 
     if ($jobid) {
 	foreach my $task ( values %$jobtasks ) {
+	    $self->Logmsg("Calling PhEDEx:File:Download:Agent->start_task for task $task->{TASKID}");
 	    $kernel->call($session, 'start_task', $task->{TASKID}, { JOBID => $jobid, JOBDIR => $jobdir });
 	}
 
@@ -898,8 +1327,61 @@ sub transfer_task
     my ( $self, $kernel, $taskid) = @_[ OBJECT, KERNEL, ARG0 ];
 
     my $task = $self->getTask($taskid) || $self->forgetTask($taskid) && return;
+        
+    my ($from, $to) = ($task->{FROM_NODE}, $task->{TO_NODE});
+    
+    # TODO: Making the assumption that there's only one protocol...
+    my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
+    
+    my $circuitID = "$from->$to"; 
+    my $circuitInfo = $self->{CIRCUITS_ESTABLISHED}{"$circuitID"};
+    
+    # A circuit is established, better as well use it
+    # TODO: We probably should do a bulk change of PFNs per job, instead of per task in job 
+    # It mighat happen that a circuit becomes active, while tasks in a job are marked ready 
+    # for transfer. Because of this, we could end up with a job list that has several
+    # files using a circuit and several files in a job that still use the original link
+    # FDTCP is smart enough that when it receives a copyjob file like this, it will
+    # sequentially launch two separate jobs (one for the files on the circuit and
+    # one for the files on the normal link) so no files in a job are lost, when the swich occurs
+    if ($circuitInfo) {
+        my ($fromIP, $toIP) = ($circuitInfo->{CIRCUIT_FROM_IP}, $circuitInfo->{CIRCUIT_TO_IP});
+                       
+        my $fromPFN = replaceHostname($task->{FROM_PFN}, $fromIP, $fromProtocol);
+        my $toPFN = replaceHostname($task->{TO_PFN}, $toIP, $toProtocol);                
+        
+        $self->Logmsg("Circuit detected! Replaced TO/FROM PFN. New PFNs: $toPFN, $fromPFN");                        
+        
+        $task->{FROM_PFN} = $fromPFN;
+        $task->{TO_PFN} = $toPFN;
+
+        # Mostly used for postmortem (i like this word) analysis
+        $task->{CIRCUIT} = $circuitID;
+        $task->{CIRCUIT_FROM_IP} = $fromIP;
+        $task->{CIRCUIT_TO_IP} = $toIP;
+    }
+    
     $task->{READY} = &mytimeofday();
     $self->saveTask($taskid) || return;
+}
+
+# Replaces the current IP or hostname in PFN with the one from the private circuit
+# ALWAYS TEST YOUR REGEX (eg. regexpal.com)
+sub replaceHostname 
+{
+    my ($pfn, $ip, $protocol) = @_;
+    
+    #$pfn =~ m/ (^fdt:\/\/)((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9]))(:\d{0,5})?\/ /;
+    
+    # Find the hostname or ip in the PFN      
+    $pfn =~ m/(^$protocol:\/\/)([a-zA-Z0-9.-]*)(:[0-9]{0,5})?/;
+    
+    my ($inHost, $outHost) = ($2, $ip);
+        
+    # Replace said hostname or IP with circuit provided IP
+    $pfn =~ s/$inHost/$outHost/g;
+             
+    return $pfn;          
 }
 
 sub transfer_done
@@ -1040,11 +1522,14 @@ sub finish_task
 	$$log =~ s/\s+/ /gs;
     }
 
+    my $circuitUsed = defined $task->{CIRCUIT} ? $task->{CIRCUIT}." fromIP=$task->{CIRCUIT_FROM_IP} toIP=$task->{CIRCUIT_TO_IP}" : "N/A";
+    
     $self->Logmsg("xstats:"
 	    . " task=$$task{TASKID}"
 	    . " file=$$task{FILEID}"
 	    . " from=$$task{FROM_NODE}"
 	    . " to=$$task{TO_NODE}"
+	    . " circuit used=$circuitUsed"
 	    . " priority=$$task{PRIORITY}"
 	    . " report-code=$$task{REPORT_CODE}"
 	    . " xfer-code=$$task{XFER_CODE}"
@@ -1147,6 +1632,9 @@ sub next_event_time
 sub stop
 {
     my ($self) = @_;
+    
+    # TODO: teardown_circuit();
+    
     $self->{BACKEND}->stop();
     # TODO:  Actually allow utility jobs to run to completion...
 }
