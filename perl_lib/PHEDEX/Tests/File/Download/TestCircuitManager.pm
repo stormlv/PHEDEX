@@ -18,7 +18,10 @@ our $baseLocation = '/tmp/tests/circuit-manager';
 
 # Tests the various smaller subroutines (checkCircuit, canRequestCircuit) from the circuit manager
 sub testHelperMethods {
-    my $circuitManager =  PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'}, DEBUG => 1, CIRCUITDIR => "$baseLocation".'/data');       
+    my $circuitManager =  PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', 
+                                                                                BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'}, 
+                                                                                CIRCUITDIR => "$baseLocation".'/data',
+                                                                                VERBOSE => 1);       
     $circuitManager->Logmsg('Testing helper methods'); 
     
     my $time = &mytimeofday();
@@ -79,7 +82,10 @@ sub setupCircuitManager {
     File::Path::make_path("$baseLocation".'/data/offline', {error => \$err});
     
     # Create a new circuit manager and setup session
-    my $circuitManager = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'}, DEBUG => 1, CIRCUITDIR => "$baseLocation".'/data');
+    my $circuitManager = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', 
+                                                                               BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
+                                                                               CIRCUITDIR => "$baseLocation".'/data',
+                                                                               VERBOSE => 1);
     # Only start the events that we deem necesssary
     $circuitManager->{PERIOD_CONSISTENCY_CHECK} = $verify;
     $circuitManager->{PERIOD_BLACKLIST_CULLING} = $cull;
@@ -578,12 +584,16 @@ sub testTransferFailure {
          
         my $circuit1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
         my $circuit2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};               
+        
+        $circuit1->{VERBOSE} = 0;
+        $circuit2->{VERBOSE} = 0;
          
         # Simulate failure of transfers on both links 
         for (my $i = 0; $i < 100; $i++) {
             $circuitManager->transferFailed($circuit1, $i);
             $circuitManager->transferFailed($circuit2, $i);
         }
+        
         
         # Deal the final blow to circuit 2
         $circuitManager->transferFailed($circuit2, 101);

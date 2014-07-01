@@ -47,7 +47,9 @@ sub new
     my $self = $class->SUPER::new(%args);   
     
     # Create circuit manager
-    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => $self->{CIRCUIT_BACKEND}, BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'});
+    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => $self->{CIRCUIT_BACKEND}, 
+                                                                                     BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
+                                                                                     VERBOSE      => $self->{VERBOSE});
     
     # Redefine how to handle signals
     $SIG{INT} = $SIG{TERM} = sub {
@@ -93,11 +95,14 @@ sub check_workload
     my ($self, $kernel, $session) = @_[ OBJECT, KERNEL, SESSION ];
     my ($tasks, $circuitManager) = ($self->{TASKS}, $self->{CIRCUIT_MANAGER});
     
-    $self->Logmsg('check_workload: begin');    
+    my $mess = "CircuitAgent->check_workload";
+    
+    $self->Logmsg("$mess: Enter event") if ($self->{VERBOSE});
+        
     $self->delay_max($kernel, 'check_workload', $self->{DELAY_WORKLOAD_CHECK});
           
     if (! defined $tasks || ! keys %{$tasks}) {
-        $self->Logmsg('check_workload: There are no tasks to look at');
+        $self->Logmsg("$mess: There are no tasks to look at") if ($self->{VERBOSE});
         return;    
     }
                           
@@ -120,7 +125,7 @@ sub check_workload
                                       
         # Skip doing anything if a circuit was already requested or established for this link                                              
         if (defined $circuitManager->{CIRCUITS}{$linkID}) {
-            $self->Dbgmsg("A circuit request has already been established for $linkID. Skipping calculations");
+            $self->Logmsg("$mess: A circuit request has already been established for $linkID. Skipping calculations") if ($self->{VERBOSE});
             next;
         }
                                                       
@@ -153,7 +158,7 @@ sub check_workload
     
     # If there are no pending links it makes no sense to continue
     if (!$pendingTasks) {
-        $self->Logmsg('check_workload: There are no pending tasks - nothing remains to be done');
+        $self->Logmsg('$mess: There are no pending tasks - nothing remains to be done');
         return;    
     }
         
@@ -185,14 +190,14 @@ sub check_workload
         
         if ($averageRate > 0) {                    
             $links->{$linkID}{AVERAGE_RATE} = $averageRate;      
-            $self->Logmsg("check_workload: Calculated an average rate of $averageRate (bytes/second) for link: $linkID based on done tasks");
+            $self->Logmsg("$mess: Calculated an average rate of $averageRate (bytes/second) for link: $linkID based on done tasks");
         }               
     }
     
     # Also check for statistics from T_ADM_LINK_PARAM 
     # TODO: We should restrict the query to only the pair of nodes for which we don't have fresh statistics    
     # There's also the problem of statistics added to the DB which pertain to circuits        
-    $self->Logmsg("Getting stats from DB for all nodes");
+    $self->Logmsg("$mess: Getting stats from DB for all nodes");
     my @nodes = join(',', values %{$self->{NODES_ID}});
     my $rateQuery = &dbexec($$self{DBH}, 
                 qq{
@@ -239,25 +244,27 @@ sub _should_request_circuit {
     my ($self, $linkID, $linkData) = @_;   
     my $circuitManager = $self->{CIRCUIT_MANAGER};
     
+    my $mess = "CircuitAgent->_should_request_circuit";
+    
     if (!defined $linkData->{AVERAGE_RATE} || 
         !defined $linkData->{PENDING_BYTES}) {
-            $self->Logmsg("_should_request_circuit: Cannot decide if we should request a circuit for $linkID when there are no performance measurements");
+            $self->Logmsg("$mess: Cannot decide if we should request a circuit for $linkID when there are no performance measurements");
             return 0;
     }
     
     if ($circuitManager->canRequestCircuit($linkData->{FROM_NODE}, $linkData->{TO_NODE}) < 0) {
-        $self->Logmsg("_should_request_circuit: Cannot request a circuit on the current link ");
+        $self->Logmsg("$mess: Cannot request a circuit on the current link ");
         return 0;
     }
     
     my $circuitBW = $circuitManager->{BACKEND}->getCircuitBandwidth($linkData->{FROM_NODE}, $linkData->{TO_NODE});
     if ($self->{ENFORCE_BANDWIDTH_CHECK} && $linkData->{AVERAGE_RATE} > $circuitBW) {
-        $self->Logmsg("_should_request_circuit: Enforce bandwidth check flag is set and average rate on normal link is higher than on circuit.  ");
+        $self->Logmsg("$mess: Enforce bandwidth check flag is set and average rate on normal link is higher than on circuit");
         return 0;
     }
                
     my $pendingWork = $linkData->{PENDING_BYTES} / $linkData->{AVERAGE_RATE};            
-    $self->Dbgmsg("_should_request_circuit: Link $linkID has $pendingWork seconds of pending work");
+    $self->Dbgmsg("$mess: Link $linkID has $pendingWork seconds of pending work");
                     
     return ($pendingWork > $self->{CIRCUIT_THRESHOLD});
 }
@@ -268,9 +275,11 @@ sub transfer_task
 {
     my ($self, $kernel, $taskid) = @_[ OBJECT, KERNEL, ARG0 ];
 
+    my $mess = "CircuitAgent->transfer_task";
+    
     my $task = $self->getTask($taskid) || $self->forgetTask($taskid) && return;
      
-    $self->Logmsg("There are several protocols for this task... How do we handle this?")
+    $self->Logmsg("$mess: There are several protocols for this task... How do we handle this?")
         if (scalar $task->{FROM_PROTOS} > 1 || scalar $task->{TO_PROTOS} > 1);
         
     my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
@@ -293,7 +302,7 @@ sub transfer_task
         my $toPFN = replaceHostname($task->{TO_PFN}, $toProtocol, $toIP);                
         
         if (defined $toPFN && defined $fromPFN) {
-            $self->Logmsg("Circuit detected! Replaced TO/FROM PFN. New PFNs: $toPFN, $fromPFN");                        
+            $self->Logmsg("$mess: Circuit detected! Replaced TO/FROM PFN. New PFNs: $toPFN, $fromPFN");                        
         
             $task->{FROM_PFN} = $fromPFN;
             $task->{TO_PFN} = $toPFN;
@@ -302,7 +311,7 @@ sub transfer_task
             $task->{CIRCUIT_FROM_IP} = $fromIP;
             $task->{CIRCUIT_TO_IP} = $toIP;
         } else {
-            $self->Logmsg("Cannot replace hostname in one or more PFNs");
+            $self->Logmsg("$mess: Cannot replace hostname in one or more PFNs");
         }             
     }
     
@@ -317,6 +326,8 @@ sub finish_task
 {    
     my ($self, $kernel, $taskid ) = @_[ OBJECT, KERNEL, ARG0 ];
     
+    my $mess = "CircuitAgent->transfer_task";
+    
     $self->SUPER::finish_task();   
      
     my $task = $self->getTask($taskid);    
@@ -328,12 +339,13 @@ sub finish_task
              ." circuit-from-IP=$task->{CIRCUIT_FROM_IP}"
              ." circuit-to-IP=$task->{CIRCUIT_TO_IP}");
     
-    if ($task->{REPORT_CODE} != 0 || $task->{XFER_CODE} != 0) {        
+    if ($task->{REPORT_CODE} != 0 || $task->{XFER_CODE} != 0) {              
+                
         # Make sure that the circuit has not expired yet
         my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, CIRCUIT_STATUS_ONLINE);    
-        return 1 unless defined $circuit;
-    
-        my $linkName = $circuit->getLinkName();
+        return 1 unless defined $circuit;           
+        
+        $self->Logmsg("$mess: Transfer failed on $circuit->getLinkName()");
         
         $self->{CIRCUIT_MANAGER}->transferFailed($circuit, $task->{XFER_CODE});
     }
@@ -342,14 +354,17 @@ sub finish_task
     return 1;
 }
 
-# If stopped, tell backend to stop, then wait for all the pending
-# utility jobs to complete.  All backends just abandon the jobs, and
-# we try to pick up on the transfer again if the agent is restarted.
-# Utility jobs usually run quickly so we let them run to completion.
+# Same as the method that's overriding, but also stops the circuit manager
 sub stop
 {
     my ($self) = @_;
-    $self->{BACKEND}->stop();
+    
+    $self->Logmsg("CircuitAgent->stop: Letting parents stop their own stuff") if ($self->{VERBOSE});    
+    # Let the parent stop everything that it's in charge of
+    $self->SUPER::stop();        
+    
+    $self->Logmsg("CircuitAgent->stop: Propagating stop message to CircuitManager as well") if ($self->{VERBOSE});
+    # Then attempt to clean all circuits
     $self->{CIRCUIT_MANAGER}->teardownAll();
 }
 

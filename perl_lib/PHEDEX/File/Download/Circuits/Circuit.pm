@@ -64,7 +64,9 @@ sub new
             # Performance related parameters
             BANDWIDTH_REQUESTED     =>  undef,              # Bandwidth we requested
             BANDWIDTH_ALLOCATED     =>  undef,              # Bandwidth allocated
-            BANDWIDTH_USED          =>  undef,              # Bandwidth we're actually using            
+            BANDWIDTH_USED          =>  undef,              # Bandwidth we're actually using      
+            
+            VERBOSE                 =>  undef,      
     );
 				
     my %args = (@_);
@@ -125,6 +127,7 @@ sub compareCircuits {
 
 sub setNodes {
     my ($self, $fromNode, $toNode) = @_;
+    $self->Logmsg("Circuit->setNodes: Nodes set to $fromNode and $toNode") if ($self->{VERBOSE});
     $self->{PHEDEX_FROM_NODE} = $fromNode;
     $self->{PHEDEX_TO_NODE} = $toNode;   
 }
@@ -160,13 +163,15 @@ sub isExpired {
 sub registerRequest { 
     my ($self, $backend, $lifetime, $bandwidth) = @_;
     
+    my $mess = 'Circuit->registerRequest';
+    
     # Cannot change status to CIRCUIT_STATUS_REQUESTING if
     #   - The status is not prior CIRCUIT_STATUS_OFFLINE
     #   - PHEDEX_FROM_NODE and PHEDEX_TO_NODE are not defined
     if ($self->{STATUS} != CIRCUIT_STATUS_OFFLINE ||
         !defined $self->{PHEDEX_FROM_NODE} || !defined $self->{PHEDEX_TO_NODE} ||
         ! defined $backend) {
-        $self->Logmsg("Cannot change status to circuit requested");
+        $self->Logmsg("$mess: Cannot change status to CIRCUIT_STATUS_REQUESTING");
         return CIRCUIT_GENERIC_ERROR;
     }
     
@@ -179,6 +184,8 @@ sub registerRequest {
     $self->{LIFETIME} = $lifetime;
     $self->{BANDWIDTH_REQUESTED} = $bandwidth;
     
+    $self->Logmsg("$mess: state has been switched to CIRCUIT_STATUS_REQUESTING");
+    
     return CIRCUIT_OK;
 }
 
@@ -186,13 +193,15 @@ sub registerRequest {
 sub registerEstablished {
     my ($self, $circuit_from_ip, $circuit_to_ip, $bandwidth) = @_;
     
+    my $mess = 'Circuit->registerEstablished';
+    
     # Cannot change status to CIRCUIT_STATUS_ONLINE if
     #   - The status is not prior CIRCUIT_STATUS_REQUESTING 
     #   - both $circuit_from_ip and $circuit_to_ip are not valid addresses
     if ($self->{STATUS} != CIRCUIT_STATUS_REQUESTING ||        
         determineAddressType($circuit_from_ip) == ADDRESS_INVALID || 
         determineAddressType($circuit_to_ip) == ADDRESS_INVALID) {
-        $self->Logmsg("Cannot change status to circuit established");
+        $self->Logmsg("$mess: Cannot change status to CIRCUIT_STATUS_ONLINE");
         return CIRCUIT_GENERIC_ERROR;
     }
     
@@ -205,7 +214,7 @@ sub registerEstablished {
     # These two can also be undef
     $self->{BANDWIDTH_ALLOCATED} = $bandwidth;
 
-    
+    $self->Logmsg("$mess: state has been switched to CIRCUIT_STATUS_ONLINE");
     return CIRCUIT_OK;
 }
 
@@ -213,14 +222,17 @@ sub registerEstablished {
 sub registerTakeDown {
     my $self = shift;
     
+    my $mess = 'Circuit->registerEstablished';
+    
     if ($self->{STATUS} != CIRCUIT_STATUS_ONLINE) {
-        $self->Logmsg("Cannot change status to circuit offline");
+        $self->Logmsg("$mess: Cannot change status to CIRCUIT_STATUS_OFFLINE");
         return CIRCUIT_GENERIC_ERROR;         
     }
     
     $self->{STATUS} = CIRCUIT_STATUS_OFFLINE;
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();    
     
+    $self->Logmsg("$mess: state has been switched to CIRCUIT_STATUS_OFFLINE");
     return CIRCUIT_OK;
 }
 
@@ -231,8 +243,10 @@ sub registerTakeDown {
 sub registerRequestFailure { 
     my ($self, $reason) = @_;
     
+    my $mess = 'Circuit->registerRequestFailure';
+    
     if ($self->{STATUS} != CIRCUIT_STATUS_REQUESTING) {
-        $self->Logmsg("Cannot register a request failure for a circuit not \'in request\'");
+        $self->Logmsg("$mess: Cannot register a request failure for a circuit not CIRCUIT_STATUS_REQUESTING");
         return CIRCUIT_GENERIC_ERROR;         
     }
     
@@ -242,6 +256,8 @@ sub registerRequestFailure {
     # Keep track of why the request failed   
     my $failure = [$self->{LAST_STATUS_CHANGE}, $reason];
     $self->{FAILURES}{CIRCUIT_FAILED_REQUEST} = $failure;   
+    
+    $self->Logmsg("$mess: Circuit request failure has been registered");
     
     return CIRCUIT_OK;
 }
@@ -259,29 +275,18 @@ sub getFailedRequest {
 sub registerTransferFailure {
     my ($self, $task, $reason) = @_;
     
+    my $mess = 'Circuit->registerTransferFailure';
+    
     if ($self->{STATUS} != CIRCUIT_STATUS_ONLINE) {
-        $self->Logmsg("Cannot register a trasfer failure for a circuit not \'online\'");
+        $self->Logmsg("$mess: Cannot register a trasfer failure for a circuit not CIRCUIT_STATUS_ONLINE");
         return CIRCUIT_GENERIC_ERROR;         
     }
     
     my $failure = [&mytimeofday(), $task, $reason];   
     push(@{$self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS}}, $failure);
     
+    $self->Logmsg("$mess: Circuit transfer failure has been registered") if ($self->{VERBOSE});    
     return CIRCUIT_OK;
-}
-
-sub registerTransfer {
-    my ($self, $task, $reason) = @_;
-    
-    if ($self->{STATUS} != CIRCUIT_STATUS_ONLINE) {
-        $self->Logmsg("Cannot register a trasfer for a circuit not \'online\'");
-        return CIRCUIT_GENERIC_ERROR;         
-    }
-    
-    my $failure = [&mytimeofday(), $task, $reason];   
-    push(@{$self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS}}, $failure);
-    
-    return CIRCUIT_OK;    
 }
 
 # Returns an array with all the details regarding the failed transfers
@@ -316,16 +321,18 @@ sub reset {
 sub saveState {
     my $self = shift;
     
+    my $mess = 'Circuit->saveState';
+    
     # Don't save if it's not in either of these states: OFFLINE, REQUESTING, ONLINE
     if ($self->{STATUS} == CIRCUIT_STATUS_TEARING_DOWN) {
-        $self->Logmsg("Won't save circuit - it is not \'in request\', \'online\' or \'offline\'...");
+        $self->Logmsg("$mess: Won't save circuit - it is not \'in request\', \'online\' or \'offline\'...");
         return CIRCUIT_ERROR_SAVING;
     }
            
     # Generate file name based on 
     my ($savePath, $filePath) = _getSaveName($self);    
     if (! defined $filePath) {
-        $self->Logmsg("An error has occured while generating file name");
+        $self->Logmsg("$mess: An error has occured while generating file name");
         return CIRCUIT_ERROR_SAVING;
     }
     
@@ -333,7 +340,7 @@ sub saveState {
     if (!-d $savePath) {        
         File::Path::make_path($savePath, {error => \my $err});
         if (@$err) {
-            $self->Logmsg("Circuit state folder did not exist and we were unable to create it");
+            $self->Logmsg("$mess: Circuit state folder did not exist and we were unable to create it");
             return CIRCUIT_ERROR_SAVING;
         }
     }
@@ -341,10 +348,10 @@ sub saveState {
     # Save the circuit
     my $file = &output($filePath, Dumper($self));    
     if (! $file) {
-        $self->Logmsg("Unable to save circuit state information");
+        $self->Logmsg("$mess: Unable to save circuit state information");
         return CIRCUIT_ERROR_SAVING;
     } else {
-        $self->Logmsg("Circuit state information successfully saved");
+        $self->Logmsg("$mess: Circuit state information successfully saved");
         return CIRCUIT_OK;    
     };
   
@@ -354,9 +361,11 @@ sub saveState {
 sub removeState {
     my $self = shift;
     
+    my $mess = 'Circuit->removeState';
+    
     my ($savePath, $filePath) = _getSaveName($self);
     if (!-d $savePath || !-e $filePath) {
-        $self->Logmsg("There's nothing to remove from the state folders");
+        $self->Logmsg("$mess: There's nothing to remove from the state folders");
         return CIRCUIT_GENERIC_ERROR;
     }
     
@@ -378,7 +387,7 @@ sub openCircuit {
         ! defined $circuit->{PHEDEX_FROM_NODE} || ! defined $circuit->{PHEDEX_TO_NODE}) {
         return (undef, CIRCUIT_ERROR_OPENING);        
     }
-        
+            
     return ($circuit, CIRCUIT_OK);
 }
 
@@ -409,7 +418,7 @@ sub _getSaveName() {
     }
 
     if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
-        $self->Logmsg("Invalid parameters in generating a circuit file name");
+        $self->Logmsg("Circuit->_getSaveName: Invalid parameters in generating a circuit file name");
         return undef;
     }    
 

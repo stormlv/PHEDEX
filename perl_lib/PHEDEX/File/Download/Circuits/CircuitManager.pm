@@ -66,8 +66,7 @@ sub new
             # POE Session id
             SESSION_ID                      => undef,      
                        
-            # Dev flags
-            DEBUG                           => 0,                                               	
+            VERBOSE                         => undef,                                               	
 		);
 		
     my %args = (@_);
@@ -96,16 +95,19 @@ sub new
 sub _poe_init
 {
     my ($self, $kernel, $session) = @_;
-  
+    my $mess = 'CircuitManager->_poe_init';
+    
+    # Remembering the session ID for when we need to stop and tear down all the circuits
     $self->{SESSION_ID} = $session->ID;
-    $self->Logmsg('Initializing all POE events in CircuitManager') if ($self->{DEBUG});
+    
+    $self->Logmsg("$mess: Initializing all POE events") if ($self->{VERBOSE});
     
     foreach my $key (keys %{$ownHandles}) {
         $kernel->state($ownHandles->{$key}, $self);    
     }
         
     # Share the session with the circuit booking backend as well
-    $self->Logmsg('Initializing all POE events in backend used by CircuitManager') if ($self->{DEBUG});
+    $self->Logmsg("$mess: Initializing all POE events for backend") if ($self->{VERBOSE});
     $self->{BACKEND}->_poe_init($kernel, $session);
       
     # Get the periodic events going 
@@ -133,24 +135,24 @@ sub canRequestCircuit {
     my ($self, $fromNode, $toNode) = @_;             
     my $linkID = &getLink($fromNode, $toNode);
     my $circuit = $self->{CIRCUITS}{$linkID};
-    my $partialMessage = "can_request_circuit: cannot request another circuit for $linkID";
+    my $mess = "CircuitManager->canRequestCircuit: cannot request another circuit for $linkID";
     
     # A circuit is already requested (or established)
     if (defined $circuit) {
-        $self->Logmsg("$partialMessage. One has already been requested");
+        $self->Logmsg("$mess: One has already been requested");
         return CIRCUIT_ALREADY_REQUESTED;
     }
             
     # Current link is blacklisted           
     my $blacklisted = $self->{LINKS_BLACKLISTED}{$linkID};
     if ($blacklisted) {
-        $self->Logmsg("$partialMessage. Link is blacklisted");
+        $self->Logmsg("$mess: Link is blacklisted");
         return CIRCUIT_BLACKLISTED;
     }
     
     # Current backend doesn't support circuits
     if (!$self->{BACKEND}->checkLinkSupport($fromNode, $toNode)) {
-        $self->Logmsg("$partialMessage. Current booking backend does not allow circuits on this link");
+        $self->Logmsg("$mess: Current booking backend does not allow circuits on this link");
         return CIRCUIT_UNAVAILABLE;
     }
     
@@ -168,7 +170,9 @@ sub verifyStateConsistency
     my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION];       
     my ($allCircuits, @circuitsRequested, @circuitsOnline, @circuitsOffline);
       
-    $self->Logmsg("$ownHandles->{VERIFY_STATE}: enter event") if ($self->{DEBUG});
+    my $mess = "CircuitManager->$ownHandles->{VERIFY_STATE}";
+      
+    $self->Logmsg("$mess: enter event") if ($self->{VERBOSE});
     $self->delay_max($kernel, $ownHandles->{VERIFY_STATE}, $self->{PERIOD_CONSISTENCY_CHECK}) if (defined $self->{PERIOD_CONSISTENCY_CHECK});
          
     &getdir($self->{CIRCUITDIR}."/requested", \@circuitsRequested);
@@ -185,13 +189,13 @@ sub verifyStateConsistency
         
         # Skip if there are no files in one of the 3 folders
         if (!scalar @{$allCircuits->{$tag}}) {
-            $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: No files found in /$tag");
+            $self->Logmsg("$mess: No files found in /$tag") if ($self->{VERBOSE}); 
             next;
         }
         
         foreach my $file (@{$allCircuits->{$tag}}) {            
             my $path = $self->{CIRCUITDIR}.'/'.$tag.'/'.$file;
-            $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Now handling $path");
+            $self->Logmsg("$mess: Now handling $path") if ($self->{VERBOSE});
                     
             # Attempt to open circuit                   
             my ($circuit, $code) = &openCircuit($path);            
@@ -199,7 +203,7 @@ sub verifyStateConsistency
             
             # Remove the state file if the read didn't return OK 
             if (!$circuitOK) {
-                $self->Logmsg("$ownHandles->{VERIFY_STATE}: Removing invalid circuit file $path");
+                $self->Logmsg("$mess: Removing invalid circuit file $path");
                 unlink $path;
                 next;
             }
@@ -209,7 +213,7 @@ sub verifyStateConsistency
             if (($circuit->{STATUS} == CIRCUIT_STATUS_REQUESTING && $tag ne 'requested') ||
                 ($circuit->{STATUS} == CIRCUIT_STATUS_ONLINE && $tag ne 'online') ||
                 ($circuit->{STATUS} == CIRCUIT_STATUS_OFFLINE && $tag ne 'offline')) {
-                    $self->Logmsg("$ownHandles->{VERIFY_STATE}: Found circuit in incorrect folder. Removing and resaving...");
+                    $self->Logmsg("$mess: Found circuit in incorrect folder. Removing and resaving...");
                     unlink $path;              
                     $circuit->saveState();       
             }                
@@ -221,19 +225,19 @@ sub verifyStateConsistency
             
             # If the scope doesn't match             
             if ($self->{CIRCUIT_SCOPE} ne $circuit->{SCOPE}) {
-                $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Skipping circuit since its scope don't match ($circuit->{SCOPE} vs $self->{CIRCUIT_SCOPE})");
+                $self->Logmsg("$mess: Skipping circuit since its scope don't match ($circuit->{SCOPE} vs $self->{CIRCUIT_SCOPE})")  if ($self->{VERBOSE});
                 next;
             }
             
             # If the backend doesn't match the one we have here, skip it            
             if ($circuit->{BOOKING_BACKEND} ne $self->{BACKEND_TYPE}) {
-                $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Skipping circuit due to different backend used ($circuit->{BOOKING_BACKEND} vs $self->{BACKEND_TYPE})");
+                $self->Logmsg("$mess: Skipping circuit due to different backend used ($circuit->{BOOKING_BACKEND} vs $self->{BACKEND_TYPE})") if ($self->{VERBOSE});
                 next;
             }
             
             # If the backend no longer supports circuits on those links, skip them as well
             if (! $self->{BACKEND}->checkLinkSupport($circuit->{PHEDEX_FROM_NODE}, $circuit->{PHEDEX_TO_NODE})) {
-                $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Skipping circuit since the backend no longer supports creation of circuits on $linkName");
+                $self->Logmsg("$mess: Skipping circuit since the backend no longer supports creation of circuits on $linkName") if ($self->{VERBOSE});
                 next;
             }
 
@@ -252,7 +256,7 @@ sub verifyStateConsistency
             
             # Skip this one if we found an identical circuit in memory
             if ($circuit->compareCircuits($inMemoryCircuit)) {
-                $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Skipping identical in-memory circuit");
+                $self->Logmsg("$mess: Skipping identical in-memory circuit") if ($self->{VERBOSE});
                 next;
             } 
             
@@ -260,7 +264,7 @@ sub verifyStateConsistency
             # yet the scope of the circuit is the same as the one for the CM
             # remove the one on disk and force a resave for the one in memory
             if (defined $inMemoryCircuit) {
-                 $self->Dbgmsg("$ownHandles->{VERIFY_STATE}: Removing similar circuit on disk and forcing resave of the one in memory");
+                 $self->Logmsg("$mess: Removing similar circuit on disk and forcing resave of the one in memory");
                  unlink $path;              
                  $inMemoryCircuit->saveState();
                  next;
@@ -284,7 +288,7 @@ sub verifyStateConsistency
                 case 'online' {
                     # Skip circuit if the link is currently blacklisted                    
                     if (defined $self->{LINKS_BLACKLISTED}{$linkName}) {
-                        $self->Logmsg("$ownHandles->{VERIFY_STATE}: Skipping circuit since $linkName is currently blacklisted");
+                        $self->Logmsg("$mess: Skipping circuit since $linkName is currently blacklisted");
                         # We're not going to remove the file. It might be useful once the blacklist timer expires
                         next;
                     }
@@ -294,24 +298,24 @@ sub verifyStateConsistency
                         (defined $circuit->{LIFETIME} && ! $circuit->isExpired())) {                                                # and it's not expired
                         
                         # Use the circuit
-                        $self->Logmsg("$ownHandles->{VERIFY_STATE}: Found established circuit $linkName. Using it");
+                        $self->Logmsg("$mess: Found established circuit $linkName. Using it");
                         $self->{CIRCUITS}{$linkName} = $circuit;     
                                       
                         if (defined $circuit->{LIFETIME}) {                             
                             my $delay = $circuit->getExpirationTime() - &mytimeofday();
-                            $self->Logmsg("$ownHandles->{VERIFY_STATE}: Established circuit has lifetime defined. Starting timer for $delay");
+                            $self->Logmsg("$mess: Established circuit has lifetime defined. Starting timer for $delay");
                             $kernel->delay_add($ownHandles->{TEARDOWN}, $delay, $circuit);
                         }
                                 
                     } else {                                                                                                        # Else we attempt to tear it down
-                        $self->Logmsg("$ownHandles->{VERIFY_STATE}: Attempting to teardown expired circuit $linkName");
+                        $self->Logmsg("$mess: Attempting to teardown expired circuit $linkName");
                         $kernel->post($session, $ownHandles->{TEARDOWN}, $circuit);                        
                     }                                              
                 }                  
                 case 'offline' {
                     # Only add the most recent (up to CIRCUIT_HISTORY_DURATION) circuit history
                     if ($circuit->{LAST_STATUS_CHANGE} > $timeNow - $self->{CIRCUIT_HISTORY_DURATION}) {
-                        $self->Logmsg("$ownHandles->{VERIFY_STATE}: Found offline circuit. Adding it to history");
+                        $self->Logmsg("$mess: Found offline circuit. Adding it to history");
                         $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}} = $circuit;                        
                     }
                 }
@@ -329,8 +333,10 @@ sub verifyStateConsistency
 sub cullBlacklist {
     my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION];    
     my (@circuitsRequested, @circuitsEstablished);
-      
-    $self->Logmsg("$ownHandles->{CULL_LIST}: enter event") if ($self->{DEBUG});    
+    
+    my $mess = "CircuitManager->$ownHandles->{CULL_LIST}";  
+    
+    $self->Logmsg("$mess: Enter event") if ($self->{VERBOSE});    
     $self->delay_max($kernel, $ownHandles->{CULL_LIST}, $self->{PERIOD_BLACKLIST_CULLING}) if (defined $self->{PERIOD_BLACKLIST_CULLING});;
     
     foreach my $linkName (keys %{$self->{LINKS_BLACKLISTED}}) {
@@ -339,23 +345,26 @@ sub cullBlacklist {
         my $details = $listData->[1];
         
         if ($time + $self->{BLACKLIST_DURATION} < &mytimeofday()) {
-            $self->Logmsg("Removing $linkName from blacklist after $self->{BLACKLIST_DURATION} seconds");
+            $self->Logmsg("$mess: Removing $linkName from blacklist after $self->{BLACKLIST_DURATION} seconds");
             delete  $self->{LINKS_BLACKLISTED}{$linkName};
         }
     }
 }
 
-
+# This routine is called by the CircuitAgent when a transfer fails
+# If too many transfer fail, it will teardown and blacklist the circuit
 sub transferFailed {
     my ($self, $circuit, $code) = @_;
     
+    my $mess = "CircuitManager->transferFailed";
+    
     if (!defined $circuit || !defined $code) {
-        $self->Logmsg("transferFailed: Circuit or code not defined");
+        $self->Logmsg("$mess: Circuit or code not defined");
         return;
     }
     
     if ($circuit->{STATUS} != CIRCUIT_STATUS_ONLINE) {
-        $self->Logmsg("transferFailed: Can't do anything with this circuit");
+        $self->Logmsg("$mess: Can't do anything with this circuit");
         return;
     }
     
@@ -373,7 +382,7 @@ sub transferFailed {
     my $linkName = $circuit->getLinkName();
     
     if ($lastHourFails > $self->{MAX_HOURLY_FAILURE_RATE}) {
-        $self->Logmsg("Blacklisting $linkName due to too many trasnfer failures");
+        $self->Logmsg("$mess: Blacklisting $linkName due to too many transfer failures");
         
         # Blacklist the circuit
         $self->{LINKS_BLACKLISTED}{$linkName} = [$now, $transferFailures];
@@ -386,15 +395,17 @@ sub transferFailed {
 sub requestCircuit {    
     my ( $self, $kernel, $session, $from_node, $to_node, $lifetime, $bandwidth) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2, ARG3 ];
     
+    my $mess = "CircuitManager->$ownHandles->{REQUEST}"; 
+    
     # Check if link is defined            
     if (!defined $from_node || !defined $to_node) {
-        $self->Logmsg("$ownHandles->{REQUEST}: Request circuit: Provided link is invalid - will not attempt a circuit request");
+        $self->Logmsg("$mess: Provided link is invalid - will not attempt a circuit request");
         return CIRCUIT_INVALID;
     }
     
     # Check with circuit booking backend to see if the nodes actually support circuits
     if (! $self->{BACKEND}->checkLinkSupport($from_node, $to_node)) {
-        $self->Logmsg("$ownHandles->{REQUEST}: Provided link does not support circuits");
+        $self->Logmsg("$mess: Provided link does not support circuits");
         return CIRCUIT_UNAVAILABLE;
     }
        
@@ -402,24 +413,24 @@ sub requestCircuit {
     
     # This check theoretically shouldn't really be necessary    
     if ($self->{CIRCUITS}{$linkName}) {
-        $self->Logmsg("Skipping request for $linkName since there is already a request/circuit ongoing");
+        $self->Logmsg("$mess: Skipping request for $linkName since there is already a request/circuit ongoing");
         return;
     }
           
-    $self->Logmsg("Attempting to request a circuit for link $linkName");   
-    defined $lifetime ? $self->Logmsg("Lifetime for link $linkName is $lifetime seconds") :
-                        $self->Logmsg("Lifetime for link $linkName is the maximum allowable by IDC");
+    $self->Logmsg("$mess: Attempting to request a circuit for link $linkName");   
+    defined $lifetime ? $self->Logmsg("$mess: Lifetime for link $linkName is $lifetime seconds") :
+                        $self->Logmsg("$mess: Lifetime for link $linkName is the maximum allowable by IDC");
            
     # Create the circuit object
     my $circuit = PHEDEX::File::Download::Circuits::Circuit->new(BOOKING_BACKEND => $self->{BACKEND_TYPE},
                                                                  STATE_FOLDER => $self->{CIRCUITDIR},
-                                                                 SCOPE => $self->{CIRCUIT_SCOPE});
+                                                                 SCOPE => $self->{CIRCUIT_SCOPE},
+                                                                 VERBOSE => $self->{VERBOSE});
     $circuit->setNodes($from_node, $to_node);
     $circuit->{CIRCUIT_REQUEST_TIMEOUT} = $self->{CIRCUIT_REQUEST_TIMEOUT};
     
-    $self->Logmsg("$ownHandles->{REQUEST}: Created circuit for link $linkName (Circuit ID = $circuit->{ID})");
-    
-    
+    $self->Logmsg("$mess: Created circuit for link $linkName (Circuit ID = $circuit->{ID})");
+        
     # Switch from the 'offline' to 'requesting' state, save to disk and store this in our memory
     eval {                                                                                                            
         $circuit->registerRequest($self->{BACKEND_TYPE}, $lifetime, $bandwidth);   
@@ -440,20 +451,22 @@ sub requestCircuit {
 sub handleRequestFailure {
     my ($self, $circuit, $code) = @_;
     
+    my $mess = "CircuitManager->handleRequestFailure";
+    
     if (!defined $circuit) {
-        $self->Logmsg("handleRequestFailure: No circuit was provided");
+        $self->Logmsg("$mess: No circuit was provided");
         return;        
     }    
     
     my $linkName = $circuit->getLinkName();
     
     if ($circuit->{STATUS} != CIRCUIT_STATUS_REQUESTING) {
-        $self->Logmsg("handleRequestFailure: Can't do anything with this circuit");
+        $self->Logmsg("$mess: Can't do anything with this circuit");
         return;
     }
     
     eval {
-        $self->Logmsg("handleRequestFailure: updating internal data");
+        $self->Logmsg("$mess: Updating internal data");
         # Remove the state that was saved to disk
         $circuit->removeState();
         
@@ -477,9 +490,11 @@ sub handleRequestFailure {
 
 sub handleRequestResponse {
     my ($self, $kernel, $session, $circuit, $return, $code) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2 ];
-        
+
+    my $mess = "CircuitManager->$ownHandles->{REQUEST_REPLY}"; 
+            
     if (!defined $circuit || !defined $code) {
-        $self->Logmsg("$ownHandles->{REQUEST_REPLY}: circuit or code not defined");
+        $self->Logmsg("$mess: Circuit or code not defined");
         return;        
     }  
     
@@ -488,26 +503,26 @@ sub handleRequestResponse {
     my $blaCircuit = $self->{CIRCUITS}{$linkName};
     
     if ($circuit->{STATUS} != CIRCUIT_STATUS_REQUESTING) {
-        $self->Logmsg("$ownHandles->{REQUEST_REPLY}: Can't do anything with this circuit");
+        $self->Logmsg("$mess: Can't do anything with this circuit");
         return;
     }
     
     # If the circuit request failed, call the method handling request failures
     if ($code < 0) {
         $self->handleRequestFailure($circuit, $code);
-        $self->Logmsg("$ownHandles->{REQUEST_REPLY}: circuit request failed for $linkName");
+        $self->Logmsg("$mess: Circuit request failed for $linkName");
         return;        
     } 
     
     # If the circuit request succeeded ... yay   
-    $self->Logmsg("$ownHandles->{REQUEST_REPLY}: circuit request succeeded for $linkName"); 
+    $self->Logmsg("$mess: Circuit request succeeded for $linkName"); 
     $circuit->removeState(); 
     $circuit->registerEstablished($return->{FROM_IP}, $return->{TO_IP}, $return->{BANDWIDTH});    
     $circuit->saveState();            
       
     $self->{CIRCUITS}{$linkName} = $circuit;
     if (defined $circuit->{LIFETIME}) {
-        $self->Logmsg("Circuit has an expiration date. Starting countdown to teardown");
+        $self->Logmsg("$mess: Circuit has an expiration date. Starting countdown to teardown");
         $kernel->delay_add('teardownCircuit', $circuit->{LIFETIME}, $circuit);
     }
 }
@@ -515,24 +530,29 @@ sub handleRequestResponse {
 sub handleRequestTimeout {
     my ($self, $kernel, $session, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0];
     
+    my $mess = "CircuitManager->$ownHandles->{REQUEST_TIMER}";
+    
     if (!defined $circuit) {
-        $self->Logmsg("$ownHandles->{REQUEST_TIMER}: something went horribly wrong... Didn't receive a circuit back");
+        $self->Logmsg("$mess: something went horribly wrong... Didn't receive a circuit back");
          return;        
     } 
     
+    $self->Logmsg("$mess: Timer has expired. Request will be ignored and link blacklisted");
     $self->handleRequestFailure($circuit, CIRCUIT_REQUEST_FAILED_TIMEDOUT);   
 }
 
 sub teardownCircuit {
     my ($self, $kernel, $session, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0];
     
+    my $mess = "CircuitManager->$ownHandles->{TEARDOWN}";
+    
     if (!defined $circuit) {
-        $self->Logmsg("$ownHandles->{TEARDOWN}: something went horribly wrong... Didn't receive a circuit back");
+        $self->Logmsg("$mess: something went horribly wrong... Didn't receive a circuit back");
         return;        
     } 
          
     my $linkName = $circuit->getLinkName();
-    $self->Logmsg("$ownHandles->{TEARDOWN}: Attempting to tear down circuit for link $linkName");
+    $self->Logmsg("$mess: Updating states for link $linkName");
     
     eval {
         $circuit->removeState();
@@ -548,6 +568,7 @@ sub teardownCircuit {
         $circuit->saveState();
     };
     
+    $self->Logmsg("$mess: Calling teardown for $linkName");
     # Call backend to take down this circuit
     $kernel->post($session, $backHandles->{BACKEND_TEARDOWN}, $circuit);    
 }
@@ -556,7 +577,9 @@ sub teardownCircuit {
 sub teardownAll {
     my ($self) = @_;
     
-    $self->Logmsg("teardownAll: Cleaning out all circuits");
+    my $mess = "CircuitManager->teardownAll";
+    
+    $self->Logmsg("$mess: Cleaning out all circuits");
     
     foreach my $circuit (values %{$self->{CIRCUITS}}) {
         my $backend = $self->{BACKEND};        
@@ -566,6 +589,7 @@ sub teardownAll {
                 # $backend->cancel_request($circuit);
             }
             case CIRCUIT_STATUS_ONLINE {
+                $self->Logmsg("$mess: Tearing down circuit for link $circuit->getLinkName()");
                 POE::Kernel->call($self->{SESSION_ID}, $ownHandles->{TEARDOWN}, $circuit);
             }          
         }    
