@@ -68,7 +68,7 @@ sub testReplaceHostname_Hostname_IP_scanning {
     is(replaceHostname("fdt://127.0.0.256/data/foo.root", $protocol, $circuitIpv4, 80), undef,                              "replaceHostname - Cannot match IP");
     is(replaceHostname("fdt://2001:0DB8:AC10::FE01::/data/foo.root", $protocol, $circuitIpv4, 80), undef,                   "replaceHostname - Cannot match IP");
     is(replaceHostname("fdt://::1:80/data/foo.root", $protocol, $circuitIpv4), "fdt://127.0.0.1/data/foo.root",             "replaceHostname - ::1:80 replaced with 127.0.0.1");
-    is(replaceHostname("fdt://[::1]:80/data/foo.root", $protocol, $circuitIpv4, 8080), "fdt://127.0.0.1:8080/data/foo.root","replaceHostname - [::1]:80 replaced with 127.0.0.1:80");       
+    is(replaceHostname("fdt://[::1]:80/data/foo.root", $protocol, $circuitIpv4, 8080), "fdt://127.0.0.1:8080/data/foo.root","replaceHostname - [::1]:80 replaced with 127.0.0.1:80");           
 }
 
 #######
@@ -85,6 +85,10 @@ testReplaceHostname_Changes_to_PFNs("192.168.0.1");
 testReplaceHostname_Changes_to_PFNs("2001:0DB8:AC10:FE01::");
 
 testReplaceHostname_Hostname_IP_scanning();
+
+# Real data test
+is(replaceHostname("fdt://vlad-vm-slc6.cern.ch:8444/data/ANSE/store/data/circuit/data/RAW/000/000000000/afebahdtsl-53b3c5a0.root", $protocol, "137.138.42.16", 8444), "fdt://137.138.42.16:8444/data/ANSE/store/data/circuit/data/RAW/000/000000000/afebahdtsl-53b3c5a0.root", "replaced correctly in PFN");
+is(replaceHostname("fdt://vlad-vm-slc6.cern.ch:8444/data/ANSE/store/data/circuit/data/RAW/000/000000000/afebahdtsl-53b3c5a0.root", $protocol, "137.138.42.16"), "fdt://137.138.42.16:8444/data/ANSE/store/data/circuit/data/RAW/000/000000000/afebahdtsl-53b3c5a0.root", "replaced correctly in PFN");
 
 done_testing();
 

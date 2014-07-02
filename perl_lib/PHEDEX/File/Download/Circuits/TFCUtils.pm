@@ -62,7 +62,9 @@ sub replaceHostname
     }
     
     my ($extractedHost, $extractedPort, $extractedPath) = ($matchExtract[1], $matchExtract[@matchExtract - 2], $matchExtract[@matchExtract - 1]);
- 
+    
+    $circuit_port = $extractedPort if (checkPort($circuit_port) == PORT_INVALID && checkPort($extractedPort));
+    
     return undef if (!defined $extractedHost);   
     
     my $newPFN = "$protocol://".
