@@ -37,7 +37,7 @@ sub new
             MAX_TASK_AGE                    =>      3*HOUR,                     # Finished tasks older than this will not contribute to average rate calculations
             
             # Circuit booking decisions
-            CIRCUIT_THRESHOLD               =>      6*HOUR,                     # Amount of work in needed before deeming a circuit necessary
+            CIRCUIT_THRESHOLD               =>      3*HOUR,                     # Amount of work in needed before deeming a circuit necessary
             ENFORCE_BANDWIDTH_CHECK         =>      0,                          # If the flag is set, it will also require that the bandwidth given by the circuit should be > avg rate on normal link
 		);
 		
@@ -47,7 +47,8 @@ sub new
     my $self = $class->SUPER::new(%args);   
     
     # Create circuit manager
-    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => $self->{CIRCUIT_BACKEND}, 
+    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(CIRCUITDIR   => $self->{DROPDIR},
+                                                                                     BACKEND_TYPE => $self->{CIRCUIT_BACKEND}, 
                                                                                      BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
                                                                                      VERBOSE      => $self->{VERBOSE});
     
@@ -67,10 +68,13 @@ sub new
 # Initialize all POE events specifically related to circuits
 sub _poe_init
 {
-    my ($self, $kernel, $session) = @_[ OBJECT, KERNEL, SESSION ];
+    my ($self, $kernel, $session) = @_[ OBJECT, KERNEL, SESSION ];    
     
+    # Needed since we're calling this subroutine directly instead of passing through POE 
+    my @superArgs; @superArgs[KERNEL, SESSION] = ($kernel, $session); shift @superArgs;
+        
     # Parent does the main initialization of POE events
-    $self->SUPER::_poe_init($self, $kernel, $session);
+    $self->SUPER::_poe_init(@superArgs);
     
     # Hand the session over to the circuit manager as well
     $self->{CIRCUIT_MANAGER}->_poe_init($kernel, $session);
@@ -158,7 +162,7 @@ sub check_workload
     
     # If there are no pending links it makes no sense to continue
     if (!$pendingTasks) {
-        $self->Logmsg('$mess: There are no pending tasks - nothing remains to be done');
+        $self->Logmsg("$mess: There are no pending tasks - nothing remains to be done");
         return;    
     }
         
@@ -197,7 +201,7 @@ sub check_workload
     # Also check for statistics from T_ADM_LINK_PARAM 
     # TODO: We should restrict the query to only the pair of nodes for which we don't have fresh statistics    
     # There's also the problem of statistics added to the DB which pertain to circuits        
-    $self->Logmsg("$mess: Getting stats from DB for all nodes");
+    $self->Logmsg("$mess: Getting stats from DB for all nodes") if ($self->{VERBOSE});
     my @nodes = join(',', values %{$self->{NODES_ID}});
     my $rateQuery = &dbexec($$self{DBH}, 
                 qq{
@@ -248,7 +252,7 @@ sub _should_request_circuit {
     
     if (!defined $linkData->{AVERAGE_RATE} || 
         !defined $linkData->{PENDING_BYTES}) {
-            $self->Logmsg("$mess: Cannot decide if we should request a circuit for $linkID when there are no performance measurements");
+            $self->Logmsg("$mess: Cannot decide if we should request a circuit for $linkID when there are no performance measurements") if ($self->{VERBOSE});
             return 0;
     }
     
@@ -264,7 +268,7 @@ sub _should_request_circuit {
     }
                
     my $pendingWork = $linkData->{PENDING_BYTES} / $linkData->{AVERAGE_RATE};            
-    $self->Dbgmsg("$mess: Link $linkID has $pendingWork seconds of pending work");
+    $self->Logmsg("$mess: Link $linkID has $pendingWork seconds of pending work") if ($self->{VERBOSE});
                     
     return ($pendingWork > $self->{CIRCUIT_THRESHOLD});
 }
@@ -278,10 +282,7 @@ sub transfer_task
     my $mess = "CircuitAgent->transfer_task";
     
     my $task = $self->getTask($taskid) || $self->forgetTask($taskid) && return;
-     
-    $self->Logmsg("$mess: There are several protocols for this task... How do we handle this?")
-        if (scalar $task->{FROM_PROTOS} > 1 || scalar $task->{TO_PROTOS} > 1);
-        
+
     my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
         
     # Check to see if a circuit is online for this pair of nodes    
@@ -298,7 +299,7 @@ sub transfer_task
     if (defined $circuit) {
         my ($fromIP, $toIP) = ($circuit->{CIRCUIT_FROM_IP}, $circuit->{CIRCUIT_TO_IP});
                        
-        my $fromPFN = replaceHostname($task->{FROM_PFN}, $fromProtocol, $fromIP);
+        my $fromPFN = replaceHostname($task->{FROM_PFN}, $fromProtocol, $fromIP, );
         my $toPFN = replaceHostname($task->{TO_PFN}, $toProtocol, $toIP);                
         
         if (defined $toPFN && defined $fromPFN) {
@@ -308,6 +309,7 @@ sub transfer_task
             $task->{TO_PFN} = $toPFN;
                 
             $task->{CIRCUIT} = $circuit->{ID};
+            $task->{CIRCUIT_LINK} = $circuit->getLinkName();
             $task->{CIRCUIT_FROM_IP} = $fromIP;
             $task->{CIRCUIT_TO_IP} = $toIP;
         } else {
@@ -327,15 +329,18 @@ sub finish_task
     my ($self, $kernel, $taskid ) = @_[ OBJECT, KERNEL, ARG0 ];
     
     my $mess = "CircuitAgent->transfer_task";
-    
-    $self->SUPER::finish_task();   
+
+    # Needed since we're calling this subroutine directly instead of passing through POE 
+    my @superArgs; @superArgs[KERNEL, ARG0] = ($kernel, $taskid); shift @superArgs;
+            
+    $self->SUPER::finish_task(@superArgs);   
      
     my $task = $self->getTask($taskid);    
     
     return unless defined $task && defined $task->{CIRCUIT};
     
     $self->Logmsg("xstats circuit details:"
-             ." circuit-link=$task->{CIRCUIT}"
+             ." circuit-link=$task->{CIRCUIT_LINK}"
              ." circuit-from-IP=$task->{CIRCUIT_FROM_IP}"
              ." circuit-to-IP=$task->{CIRCUIT_TO_IP}");
     
@@ -345,7 +350,9 @@ sub finish_task
         my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, CIRCUIT_STATUS_ONLINE);    
         return 1 unless defined $circuit;           
         
-        $self->Logmsg("$mess: Transfer failed on $circuit->getLinkName()");
+        my $linkName = $circuit->getLinkName();
+        
+        $self->Logmsg("$mess: Transfer failed on $linkName");
         
         $self->{CIRCUIT_MANAGER}->transferFailed($circuit, $task->{XFER_CODE});
     }
@@ -359,7 +366,7 @@ sub stop
 {
     my ($self) = @_;
     
-    $self->Logmsg("CircuitAgent->stop: Letting parents stop their own stuff") if ($self->{VERBOSE});    
+    $self->Logmsg("CircuitAgent->stop: Letting parent stop its own stuff") if ($self->{VERBOSE});    
     # Let the parent stop everything that it's in charge of
     $self->SUPER::stop();        
     
