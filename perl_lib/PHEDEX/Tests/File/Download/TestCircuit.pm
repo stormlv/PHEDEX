@@ -13,15 +13,14 @@ use Test::More;
 
 # Trivial test consists of creating a circuit and making sure parameters are initialized correctly
 sub testObjectInitialisation {
-    my $testCircuit = PHEDEX::File::Download::Circuits::Circuit->new(PHEDEX_FROM_NODE => 'T2_ANSE_GENEVA', PHEDEX_TO_NODE => 'T2_ANSE_AMSTERDAM', DROPDIR => '/tmp2');
+    my $testCircuit = PHEDEX::File::Download::Circuits::Circuit->new(PHEDEX_FROM_NODE => 'T2_ANSE_GENEVA', PHEDEX_TO_NODE => 'T2_ANSE_AMSTERDAM', CIRCUITDIR => '/tmp2/circuit');
     
     ok($testCircuit->{ID});
     is($testCircuit->{PHEDEX_FROM_NODE}, 'T2_ANSE_GENEVA');
     is($testCircuit->{PHEDEX_TO_NODE}, 'T2_ANSE_AMSTERDAM');
     is($testCircuit->{BOOKING_BACKEND}, 'Dummy');
-    is($testCircuit->{SCOPE}, 'GENERIC');
-    is($testCircuit->{DROPDIR}, '/tmp2');
-    is($testCircuit->{STATE_FOLDER}, '/tmp2/circuit');    
+    is($testCircuit->{SCOPE}, 'GENERIC');    
+    is($testCircuit->{CIRCUITDIR}, '/tmp2/circuit');    
     is($testCircuit->{CIRCUIT_REQUEST_TIMEOUT}, 5*MINUTE);
     is($testCircuit->{CIRCUIT_DEFAULT_LIFETIME}, 5*HOUR);
 }
@@ -44,12 +43,12 @@ sub testSaveErrorHandling {
     $testCircuit->{PHEDEX_TO_NODE} = 'T2_ANSE_AMSTERDAM';
     $testCircuit->{PHEDEX_FROM_NODE} = 'T2_ANSE_GENEVA';
         
-    $testCircuit->{STATE_FOLDER} = '';
+    $testCircuit->{CIRCUITDIR} = '';
     is($testCircuit->saveState(), CIRCUIT_ERROR_SAVING, 'circuit - save failed - cannot create state folder');
     
     File::Path::make_path('/tmp/circuit');
     File::Path::make_path('/tmp/circuit/requested', { mode => 0555 });
-    $testCircuit->{STATE_FOLDER} = '/tmp/circuit';
+    $testCircuit->{CIRCUITDIR} = '/tmp/circuit';
     is($testCircuit->saveState(), CIRCUIT_ERROR_SAVING, 'circuit - save failed - cannot write to folder');
     
     # Because rmtree doesn't seem to work when w permissions are missing
@@ -190,11 +189,8 @@ sub testErrorLogging {
     
     is(scalar @$failedTransfers, 2, 'circuit - two transfers failed');
     
-    is_deeply($task1, $failedTransfers->[0][1], "circuit - initial circuit and opened circuit do not differ");    
-    is($failedTransfers->[0][2], 'failure 1' , 'circuit - two transfers failed');         
-        
+    is_deeply($task1, $failedTransfers->[0][1], "circuit - initial circuit and opened circuit do not differ");            
     is_deeply($task2, $failedTransfers->[1][1], "circuit- initial circuit and opened circuit do not differ");
-    is($failedTransfers->[1][2], 'failure 2' , 'circuit - two transfers failed');
 }
 
 # Test of the circuit comparison 

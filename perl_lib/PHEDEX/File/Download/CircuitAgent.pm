@@ -47,7 +47,7 @@ sub new
     my $self = $class->SUPER::new(%args);   
     
     # Create circuit manager
-    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(CIRCUITDIR   => $self->{DROPDIR},
+    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(CIRCUITDIR   => "$self->{DROPDIR}"."/circuits",
                                                                                      BACKEND_TYPE => $self->{CIRCUIT_BACKEND}, 
                                                                                      BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
                                                                                      VERBOSE      => $self->{VERBOSE});
@@ -354,7 +354,7 @@ sub finish_task
         
         $self->Logmsg("$mess: Transfer failed on $linkName");
         
-        $self->{CIRCUIT_MANAGER}->transferFailed($circuit, $task->{XFER_CODE});
+        $self->{CIRCUIT_MANAGER}->transferFailed($circuit, $task);
     }
        
     # Indicate success.

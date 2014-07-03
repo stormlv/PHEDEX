@@ -5,6 +5,7 @@ use warnings;
 
 use base 'PHEDEX::Core::Logging';
 use POE;
+use List::Util qw(min);
 
 my %params =
 	(      
@@ -53,7 +54,7 @@ sub checkLinkSupport {
 sub getCircuitBandwidth {
     my ($self, $from_node, $to_node) = @_;    
     return undef unless $self->checkLinkSupport($from_node, $to_node);
-    return min($self->{AGENT_TRANSLATION}{$from_node}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$to_node}{BANDWIDTH});
+    return min $self->{AGENT_TRANSLATION}{$from_node}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$to_node}{BANDWIDTH};
 }
 
 # This method should be implemented by the backend child

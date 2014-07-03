@@ -156,7 +156,7 @@ sub testVSCMisplacedCircuits {
     ### Prepare misplaced circuits    
     # Save and move requested circuit to online
     my $misplacedRequest = createRequestingCircuit($time, 'WDummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $misplacedRequest->{STATE_FOLDER} = "$baseLocation".'/data';
+    $misplacedRequest->{CIRCUITDIR} = "$baseLocation".'/data';
     $misplacedRequest->saveState();
     my $fileReq = $misplacedRequest->getLinkName().'-'.formattedTime($time);
     move "$baseLocation"."/data/requested/$fileReq", "$baseLocation"."/data/online/$fileReq".'req.moved';
@@ -164,7 +164,7 @@ sub testVSCMisplacedCircuits {
     
     # Save and move establised circuit to offline
     my $misplacedEstablished = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-    $misplacedEstablished->{STATE_FOLDER} = "$baseLocation".'/data';
+    $misplacedEstablished->{CIRCUITDIR} = "$baseLocation".'/data';
     $misplacedEstablished->saveState();
     my $fileEst = $misplacedEstablished->getLinkName().'-'.formattedTime($time);
     move "$baseLocation"."/data/online/$fileEst", "$baseLocation"."/data/offline/$fileEst".'est.moved';
@@ -173,7 +173,7 @@ sub testVSCMisplacedCircuits {
     # Save and move offline circuit to online
     my $misplacedOffline = createOfflineCircuit($time);
     $misplacedOffline->{BOOKING_BACKEND} = 'WDummy';
-    $misplacedOffline->{STATE_FOLDER} = "$baseLocation".'/data';
+    $misplacedOffline->{CIRCUITDIR} = "$baseLocation".'/data';
     $misplacedOffline->saveState();
     my $fileOff = $misplacedOffline->getLinkName().'-'.formattedTime($time);
     move "$baseLocation"."/data/offline/$fileOff", "$baseLocation"."/data/requested/$fileOff".'off.moved';
@@ -201,15 +201,15 @@ sub testVSCUnclaimedCircuits {
     
     my $wrongScopeCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
     $wrongScopeCircuit->{SCOPE} = 'UNGENERIC';
-    $wrongScopeCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $wrongScopeCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     $wrongScopeCircuit->saveState();
     
     my $wrongBackendCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WrongDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-    $wrongBackendCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $wrongBackendCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     $wrongBackendCircuit->saveState();
     
     my $deprecatedLinksCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_3', 'T2_ANSE_CERN_4');
-    $deprecatedLinksCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $deprecatedLinksCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     $deprecatedLinksCircuit->saveState();
     
     ### Run POE 
@@ -229,7 +229,7 @@ sub testVSCSkipIdenticalCircuits {
     my $time = &mytimeofday();
     
     my $existingCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $existingCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $existingCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     $existingCircuit->saveState();
     
     $circuitManager->{CIRCUITS}{$existingCircuit->getLinkName()} = $existingCircuit;
@@ -253,11 +253,11 @@ sub testVSCRemoveSimilarCircuits {
     my $time = &mytimeofday();
         
     my $onDiskCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $onDiskCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $onDiskCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     $onDiskCircuit->saveState();
     
     my $inMemoryCircuit = createEstablishedCircuit($time - 10, '192.168.0.1', '192.168.0.2', undef, $time - 10, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $inMemoryCircuit->{STATE_FOLDER} = "$baseLocation".'/data';
+    $inMemoryCircuit->{CIRCUITDIR} = "$baseLocation".'/data';
     
     $circuitManager->{CIRCUITS}{$inMemoryCircuit->getLinkName()} = $inMemoryCircuit;
     
@@ -281,7 +281,7 @@ sub testVSCHandleCircuitRequest {
     my $time = &mytimeofday();
     
     my $request = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $request->{STATE_FOLDER} = "$baseLocation".'/data';
+    $request->{CIRCUITDIR} = "$baseLocation".'/data';
     $request->saveState();
 
     ### Run POE 
@@ -310,19 +310,19 @@ sub testVSCHandleEstablishedCircuits {
     my $time = &mytimeofday();
     
     my $establishedNotYetExpired = createEstablishedCircuit($time - 0.3, '192.168.0.1', '192.168.0.2', undef, $time - 0.3, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev', 0.5);
-    $establishedNotYetExpired->{STATE_FOLDER} = "$baseLocation".'/data';
+    $establishedNotYetExpired->{CIRCUITDIR} = "$baseLocation".'/data';
     $establishedNotYetExpired->saveState();
     
     my $establishedNotExpired = createEstablishedCircuit($time - 0.3, '192.168.0.1', '192.168.0.2', undef, $time - 0.3, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', 1.0);
-    $establishedNotExpired->{STATE_FOLDER} = "$baseLocation".'/data';
+    $establishedNotExpired->{CIRCUITDIR} = "$baseLocation".'/data';
     $establishedNotExpired->saveState();
     
     my $establishedExpired = createEstablishedCircuit($time - 0.6, '192.168.0.1', '192.168.0.2', undef, $time - 0.6, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', 0.4);
-    $establishedExpired->{STATE_FOLDER} = "$baseLocation".'/data';
+    $establishedExpired->{CIRCUITDIR} = "$baseLocation".'/data';
     $establishedExpired->saveState();
     
     my $establishedNoExpiration = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev');
-    $establishedNoExpiration->{STATE_FOLDER} = "$baseLocation".'/data';
+    $establishedNoExpiration->{CIRCUITDIR} = "$baseLocation".'/data';
     $establishedNoExpiration->saveState();
 
     ### Run POE 
@@ -346,19 +346,19 @@ sub testVSCOfflineCircuits {
     my $time = &mytimeofday();
     
     my $offlineOld = createOfflineCircuit($time - $circuitManager->{CIRCUIT_HISTORY_DURATION});
-    $offlineOld->{STATE_FOLDER} = "$baseLocation".'/data';
+    $offlineOld->{CIRCUITDIR} = "$baseLocation".'/data';
     $offlineOld->{PHEDEX_FROM_NODE} = 'T2_ANSE_CERN_1';
     $offlineOld->{PHEDEX_TO_NODE} = 'T2_ANSE_CERN_2';
     $offlineOld->saveState();
     
     my $offlineNew1 = createOfflineCircuit($time - 10);
-    $offlineNew1->{STATE_FOLDER} = "$baseLocation".'/data';
+    $offlineNew1->{CIRCUITDIR} = "$baseLocation".'/data';
     $offlineNew1->{PHEDEX_FROM_NODE} = 'T2_ANSE_CERN_1';
     $offlineNew1->{PHEDEX_TO_NODE} = 'T2_ANSE_CERN_2';
     $offlineNew1->saveState();
     
     my $offlineNew2 = createOfflineCircuit();
-    $offlineNew2->{STATE_FOLDER} = "$baseLocation".'/data';
+    $offlineNew2->{CIRCUITDIR} = "$baseLocation".'/data';
     $offlineNew2->{PHEDEX_FROM_NODE} = 'T2_ANSE_CERN_1';
     $offlineNew2->{PHEDEX_TO_NODE} = 'T2_ANSE_CERN_2';
     $offlineNew2->saveState();

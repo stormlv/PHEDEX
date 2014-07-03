@@ -354,11 +354,11 @@ sub cullBlacklist {
 # This routine is called by the CircuitAgent when a transfer fails
 # If too many transfer fail, it will teardown and blacklist the circuit
 sub transferFailed {
-    my ($self, $circuit, $code) = @_;
+    my ($self, $circuit, $task) = @_;
     
     my $mess = "CircuitManager->transferFailed";
     
-    if (!defined $circuit || !defined $code) {
+    if (!defined $circuit || !defined $task) {
         $self->Logmsg("$mess: Circuit or code not defined");
         return;
     }
@@ -369,7 +369,7 @@ sub transferFailed {
     }
     
     # Tell the circuit that a transfer failed on it    
-    $circuit->registerTransferFailure($code);
+    $circuit->registerTransferFailure($task);
     
     my $transferFailures = $circuit->getFailedTransfers();  
     my $lastHourFails;
@@ -423,7 +423,7 @@ sub requestCircuit {
            
     # Create the circuit object
     my $circuit = PHEDEX::File::Download::Circuits::Circuit->new(BOOKING_BACKEND => $self->{BACKEND_TYPE},
-                                                                 STATE_FOLDER => $self->{CIRCUITDIR},
+                                                                 CIRCUITDIR => $self->{CIRCUITDIR},
                                                                  SCOPE => $self->{CIRCUIT_SCOPE},
                                                                  VERBOSE => $self->{VERBOSE});
     $circuit->setNodes($from_node, $to_node);

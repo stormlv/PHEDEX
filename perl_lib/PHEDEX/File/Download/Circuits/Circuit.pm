@@ -55,7 +55,7 @@ sub new
                                         },
             
             # Other parameters
-            STATE_FOLDER            =>  undef,
+            CIRCUITDIR            =>  undef,
             
             # General parameters
             CIRCUIT_REQUEST_TIMEOUT       => 5*MINUTE,         # in seconds
@@ -77,8 +77,7 @@ sub new
 
     my $ug = new Data::UUID;     
     $self->{ID} = $ug->to_string($ug->create());
-    $self->{DROPDIR} = '/tmp' unless defined $self->{DROPDIR};
-    $self->{STATE_FOLDER} = $self->{DROPDIR}.'/circuit' unless defined $self->{STATE_FOLDER};            
+    $self->{CIRCUITDIR} = '/tmp/circuit' unless defined $self->{CIRCUITDIR};            
      
     bless $self, $class;
     
@@ -222,7 +221,7 @@ sub registerEstablished {
 sub registerTakeDown {
     my $self = shift;
     
-    my $mess = 'Circuit->registerEstablished';
+    my $mess = 'Circuit->registerTakeDown';
     
     if ($self->{STATUS} != CIRCUIT_STATUS_ONLINE) {
         $self->Logmsg("$mess: Cannot change status to CIRCUIT_STATUS_OFFLINE");
@@ -273,8 +272,9 @@ sub getFailedRequest {
 # Based on this information CircuitManager might decide to blacklist a circuit
 # if too many transfers failed on this particular circuit
 sub registerTransferFailure {
-    my ($self, $task, $reason) = @_;
+    my ($self, $task) = @_;
     
+    # TODO: When registering a failure, it might be nice to also clean up old ones or just "remember the last xxx failures"
     my $mess = 'Circuit->registerTransferFailure';
     
     if ($self->{STATUS} != CIRCUIT_STATUS_ONLINE) {
@@ -282,7 +282,7 @@ sub registerTransferFailure {
         return CIRCUIT_GENERIC_ERROR;         
     }
     
-    my $failure = [&mytimeofday(), $task, $reason];   
+    my $failure = [&mytimeofday(), $task];   
     push(@{$self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS}}, $failure);
     
     $self->Logmsg("$mess: Circuit transfer failure has been registered") if ($self->{VERBOSE});    
@@ -313,11 +313,11 @@ sub reset {
 }
 
 # Saves the current state of the circuit 
-# For this a valid STATE_FOLDER must be defined
+# For this a valid CIRCUITDIR must be defined
 # If it's not specified at construction it will automatically be created in {DROPDIR}/circuit
 # If DROPDIR is not specified this defaults to '/tmp'
 # Based on its current state, the circuit will either be saved in
-# {STATE_FOLDER}/requested, {STATE_FOLDER}/online or {STATE_FOLDER}/offline
+# {CIRCUITDIR}/requested, {CIRCUITDIR}/online or {CIRCUITDIR}/offline
 sub saveState {
     my $self = shift;
     
@@ -393,7 +393,7 @@ sub openCircuit {
 
 # Generates a file name in the form of : FROM_NODE-to-TO_NODE-time
 # ex. T2_ANSE_Amsterdam-to-T2_ANSE_Geneva-20140427-10:00:00
-# Returns a save path ({STATE_FOLDER}/$state) and a file path ({STATE_FOLDER}/$state/$FROM_NODE-to-$TO_NODE-$time)
+# Returns a save path ({CIRCUITDIR}/$state) and a file path ({CIRCUITDIR}/$state/$FROM_NODE-to-$TO_NODE-$time)
 # We could also put part of the UUID at the end of the file but for now it is not needed
 # unless we would request multiple circuits on the same link *at the same time*...which we don't/won't?
 sub _getSaveName() {
@@ -403,15 +403,15 @@ sub _getSaveName() {
     
     switch ($self->{STATUS}) {
         case CIRCUIT_STATUS_REQUESTING {
-            $savePath = $self->{STATE_FOLDER}.'/requested';
+            $savePath = $self->{CIRCUITDIR}.'/requested';
             $saveTime = $self->{REQUEST_TIME};
         }
         case CIRCUIT_STATUS_ONLINE {
-            $savePath = $self->{STATE_FOLDER}.'/online';
+            $savePath = $self->{CIRCUITDIR}.'/online';
             $saveTime = $self->{ESTABLISHED_TIME};     
         }
         case CIRCUIT_STATUS_OFFLINE {
-            $savePath = $self->{STATE_FOLDER}.'/offline';
+            $savePath = $self->{CIRCUITDIR}.'/offline';
             $saveTime = $self->{LAST_STATUS_CHANGE};     
         }
           
