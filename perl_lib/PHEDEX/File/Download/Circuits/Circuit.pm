@@ -14,6 +14,7 @@ use POSIX;
 use File::Path;
 use Switch;
 use Scalar::Util qw(blessed);
+use Time::HiRes qw(time);
 
 our @EXPORT = qw(compareCircuits openCircuit formattedTime getLink);
 
@@ -330,7 +331,7 @@ sub saveState {
     }
            
     # Generate file name based on 
-    my ($savePath, $filePath) = _getSaveName($self);    
+    my ($savePath, $filePath) = getSaveName($self);    
     if (! defined $filePath) {
         $self->Logmsg("$mess: An error has occured while generating file name");
         return CIRCUIT_ERROR_SAVING;
@@ -363,7 +364,7 @@ sub removeState {
     
     my $mess = 'Circuit->removeState';
     
-    my ($savePath, $filePath) = _getSaveName($self);
+    my ($savePath, $filePath) = getSaveName($self);
     if (!-d $savePath || !-e $filePath) {
         $self->Logmsg("$mess: There's nothing to remove from the state folders");
         return CIRCUIT_GENERIC_ERROR;
@@ -396,7 +397,7 @@ sub openCircuit {
 # Returns a save path ({CIRCUITDIR}/$state) and a file path ({CIRCUITDIR}/$state/$FROM_NODE-to-$TO_NODE-$time)
 # We could also put part of the UUID at the end of the file but for now it is not needed
 # unless we would request multiple circuits on the same link *at the same time*...which we don't/won't?
-sub _getSaveName() {
+sub getSaveName() {
     my $self = shift;
     
     my ($filePath, $savePath, $saveTime);
@@ -418,19 +419,31 @@ sub _getSaveName() {
     }
 
     if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
-        $self->Logmsg("Circuit->_getSaveName: Invalid parameters in generating a circuit file name");
+        $self->Logmsg("Circuit->getSaveName: Invalid parameters in generating a circuit file name");
         return undef;
     }    
 
-    $filePath = $savePath.'/'.$self->getLinkName().'-'.formattedTime($saveTime);
+    my $partialID = substr($self->{ID}, 1, 8);
+    
+    $filePath = $savePath.'/'.$self->getLinkName()."-$partialID-".formattedTime($saveTime);
     
     return ($savePath, $filePath);    
 }
 
 # Generates a human readable date and time - mostly used when saving, in the state file name
 sub formattedTime{ 
-    my $time = shift;    
-    return defined time ? strftime ('%Y%m%d-%Hh%Mm%S', gmtime(int($time))) : undef; 
+    my ($time, $includeMilis) = @_;    
+    
+    return undef if ! defined $time; 
+    
+    my $milis = ''; 
+    
+    if ($includeMilis) {
+        $milis = sprintf("%.4f", $time - int($time));
+        $milis  =~ s/^.//;
+    }
+     
+    return strftime('%Y%m%d-%Hh%Mm%S', gmtime(int($time))).$milis; 
 }
 
 1;

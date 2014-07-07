@@ -16,36 +16,6 @@ use Test::More;
 
 our $baseLocation = '/tmp/tests/circuit-manager';
 
-# Tests the various smaller subroutines (checkCircuit, canRequestCircuit) from the circuit manager
-sub testHelperMethods {
-    my $circuitManager =  PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', 
-                                                                                BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'}, 
-                                                                                CIRCUITDIR => "$baseLocation".'/data',
-                                                                                VERBOSE => 1);       
-    $circuitManager->Logmsg('Testing helper methods'); 
-    
-    my $time = &mytimeofday();
-    
-    # testing checkCircuit
-    my $requestingCircuit = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $circuitManager->{CIRCUITS}{$requestingCircuit->getLinkName()} = $requestingCircuit; 
-    
-    my $establishedCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-    $circuitManager->{CIRCUITS}{$establishedCircuit->getLinkName()} = $establishedCircuit;
-    
-    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', CIRCUIT_STATUS_REQUESTING), $requestingCircuit ,  'circuit manager / check helper methods: checkCircuit works correctly');
-    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', CIRCUIT_STATUS_ONLINE), 'circuit manager / check helper methods: checkCircuit works correctly');
-    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', CIRCUIT_STATUS_ONLINE), $establishedCircuit ,  'circuit manager / check helper methods: checkCircuit works correctly');
-    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', CIRCUIT_STATUS_REQUESTING), 'circuit manager / check helper methods: checkCircuit works correctly');
-    
-    # testing canRequestCircuit
-    $circuitManager->{LINKS_BLACKLISTED}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_Dev'} = 'data';
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'), CIRCUIT_AVAILABLE, 'circuit manager / check helper methods: canRequestCircuit says we can request a circuit'); 
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'), CIRCUIT_ALREADY_REQUESTED, 'circuit manager / check helper methods: canRequestCircuit says we cannot request a circuit which is already in CIRCUITS');    
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev'), CIRCUIT_BLACKLISTED, 'circuit manager / check helper methods: canRequestCircuit says we cannot request a circuit on a blacklisted link');
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_3', 'T2_ANSE_CERN_Dev'), CIRCUIT_UNAVAILABLE, 'circuit manager / check helper methods: canRequestCircuit says backend cannot request a circuit on provided link');
-}
-
 sub setupSession {
     my ($circuitManager, $endAfter, $additionalEvents) = @_;    
     my $states;
@@ -55,7 +25,7 @@ sub setupSession {
         $circuitManager->Logmsg("Starting a POE test session (id=",$session->ID,")");        
         $circuitManager->_poe_init($kernel, $session);
         foreach my $event (@{$additionalEvents}) {
-            $kernel->delay($event->[0] => $event->[1], $circuitManager);    
+            $kernel->delay($event->[0] => $event->[1], $circuitManager, $session);    
         }          
         $kernel->delay(stopSession => $endAfter);
     };
@@ -111,6 +81,36 @@ sub logChecking {
     }        
     close LOG;    
     return 0;
+}
+
+# Tests the various smaller subroutines (checkCircuit, canRequestCircuit) from the circuit manager
+sub testHelperMethods {
+    my $circuitManager =  PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy', 
+                                                                                BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'}, 
+                                                                                CIRCUITDIR => "$baseLocation".'/data',
+                                                                                VERBOSE => 1);       
+    $circuitManager->Logmsg('Testing helper methods'); 
+    
+    my $time = &mytimeofday();
+    
+    # testing checkCircuit
+    my $requestingCircuit = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
+    $circuitManager->{CIRCUITS}{$requestingCircuit->getLinkName()} = $requestingCircuit; 
+    
+    my $establishedCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
+    $circuitManager->{CIRCUITS}{$establishedCircuit->getLinkName()} = $establishedCircuit;
+    
+    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', CIRCUIT_STATUS_REQUESTING), $requestingCircuit ,  'circuit manager / check helper methods: checkCircuit works correctly');
+    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', CIRCUIT_STATUS_ONLINE), 'circuit manager / check helper methods: checkCircuit works correctly');
+    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', CIRCUIT_STATUS_ONLINE), $establishedCircuit ,  'circuit manager / check helper methods: checkCircuit works correctly');
+    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', CIRCUIT_STATUS_REQUESTING), 'circuit manager / check helper methods: checkCircuit works correctly');
+    
+    # testing canRequestCircuit
+    $circuitManager->{LINKS_BLACKLISTED}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_Dev'} = 'data';
+    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'), CIRCUIT_AVAILABLE, 'circuit manager / check helper methods: canRequestCircuit says we can request a circuit'); 
+    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'), CIRCUIT_ALREADY_REQUESTED, 'circuit manager / check helper methods: canRequestCircuit says we cannot request a circuit which is already in CIRCUITS');    
+    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev'), CIRCUIT_BLACKLISTED, 'circuit manager / check helper methods: canRequestCircuit says we cannot request a circuit on a blacklisted link');
+    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_3', 'T2_ANSE_CERN_Dev'), CIRCUIT_UNAVAILABLE, 'circuit manager / check helper methods: canRequestCircuit says backend cannot request a circuit on provided link');
 }
 
 # Test consists of creating 3 malformed circuits in each of the 3 locations in /circuits
@@ -183,9 +183,9 @@ sub testVSCMisplacedCircuits {
     POE::Kernel->run();
     
     ### The three misplaced circuits should now be in their correct folders
-    ok(-e $misplacedRequest->_getSaveName(), "circuit manager / verifyStateConsistency - misplaced requested circuit back in its folder");            
-    ok(-e $misplacedEstablished->_getSaveName(), "circuit manager / verifyStateConsistency - misplaced established circuit back in its folder");
-    ok(-e $misplacedOffline->_getSaveName(), "circuit manager / verifyStateConsistency - misplaced offline circuit back in its folder");    
+    ok(-e $misplacedRequest->getSaveName(), "circuit manager / verifyStateConsistency - misplaced requested circuit back in its folder");            
+    ok(-e $misplacedEstablished->getSaveName(), "circuit manager / verifyStateConsistency - misplaced established circuit back in its folder");
+    ok(-e $misplacedOffline->getSaveName(), "circuit manager / verifyStateConsistency - misplaced offline circuit back in its folder");    
 }
 
 # Test consists of creating usable circuits which cannot be handled by the circuit manager
@@ -264,8 +264,8 @@ sub testVSCRemoveSimilarCircuits {
     ### Run POE 
     POE::Kernel->run();
     
-    ok(!-e $onDiskCircuit->_getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously on disk has been removed");            
-    ok(-e $inMemoryCircuit->_getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously in memory has been resaved");
+    ok(!-e $onDiskCircuit->getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously on disk has been removed");            
+    ok(-e $inMemoryCircuit->getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously in memory has been resaved");
     is($circuitManager->{CIRCUITS}{$inMemoryCircuit->getLinkName()}->{ID}, $inMemoryCircuit->{ID} , "circuit manager / verifyStateConsistency - similar circuit previously in memory has not changed");    
 }
 
@@ -287,9 +287,11 @@ sub testVSCHandleCircuitRequest {
     ### Run POE 
     POE::Kernel->run();
            
-    ok(!-e $request->_getSaveName(), "circuit manager / verifyStateConsistency - circuit request no longer in /requested");
-    
-    my $file ="$baseLocation".'/data/offline/'.$request->getLinkName().'-'.formattedTime($time);
+    ok(!-e $request->getSaveName(), "circuit manager / verifyStateConsistency - circuit request no longer in /requested");
+       
+    my $partialID = substr($request->{ID}, 1, 8);
+       
+    my $file ="$baseLocation".'/data/offline/'.$request->getLinkName()."-$partialID-".formattedTime($time);
     ok(-e $file, "circuit manager / verifyStateConsistency - circuit request marked as offline now");      
     
     my ($offline, $code) = PHEDEX::File::Download::Circuits::Circuit::openCircuit($file);    
@@ -444,13 +446,19 @@ sub testRCInvalidCircuitRequests {
 sub testRCCreatesRequests {
     
     our $time = &mytimeofday();
+    our ($partialIDc1, $partialIDc2);
     
     # Intermediate test that checks that requests were actually created
     sub iTestCreationOfRequests {
         my $circuitManager = $_[ARG0];
         
-        my $fileReq1 = $baseLocation."/data/requested/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time);
-        my $fileReq2 = $baseLocation."/data/requested/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time);
+        my $c1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
+        my $c2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
+        $partialIDc1 = substr($c1->{ID}, 1, 8);
+        $partialIDc2 = substr($c2->{ID}, 1, 8);
+        
+        my $fileReq1 = $baseLocation."/data/requested/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time);
+        my $fileReq2 = $baseLocation."/data/requested/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time);
                 
         ok(-e $fileReq1, "circuit manager / requestCircuit - circuit 1 has been requested");
         ok(-e $fileReq2, "circuit manager / requestCircuit - circuit 2 has been requested");
@@ -477,10 +485,10 @@ sub testRCCreatesRequests {
     sub iTestSwitchToEstablished {
         my $circuitManager = $_[ARG0];
         
-        my $fileReq1 = $baseLocation."/data/requested/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time);
-        my $fileReq2 = $baseLocation."/data/requested/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time);           
-        my $fileEst1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time+0.3);
-        my $fileEst2 = $baseLocation."/data/online/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time+0.3);    
+        my $fileReq1 = $baseLocation."/data/requested/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time);
+        my $fileReq2 = $baseLocation."/data/requested/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time);           
+        my $fileEst1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time+0.3);
+        my $fileEst2 = $baseLocation."/data/online/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time+0.3);    
             
         ok(!-e $fileReq1, "circuit manager / requestCircuit - request for circuit 1 has been removed");
         ok(!-e $fileReq2, "circuit manager / requestCircuit - request for circuit 2 has been removed");
@@ -505,9 +513,9 @@ sub testRCCreatesRequests {
     sub iTestSwitchToOffline {
         my $circuitManager = $_[ARG0];
         
-        my $fileEst1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time+0.3);
-        my $fileEst2 = $baseLocation."/data/online/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time+0.3);
-        my $fileOff2 = $baseLocation."/data/offline/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time+0.5);     
+        my $fileEst1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time+0.3);
+        my $fileEst2 = $baseLocation."/data/online/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time+0.3);
+        my $fileOff2 = $baseLocation."/data/offline/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time+0.5);     
            
         ok(-e $fileEst1, "circuit manager / requestCircuit - circuit 1 hasn't expired");
         ok(!-e $fileEst2, "circuit manager / requestCircuit - circuit 2 has expired");
@@ -550,7 +558,10 @@ sub testRCExpiringCircuitRequests {
     ### Run POE
     POE::Kernel->run();
     
-    my $fileOff = $baseLocation."/data/offline/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time + 0.1);
+    my @offKeys = keys %{$circuitManager->{CIRCUITS_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}};
+    
+    my $circuitID = substr($offKeys[0], 1, 8);    
+    my $fileOff = $baseLocation."/data/offline/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$circuitID-".formattedTime($time + 0.1);
     ok(-e $fileOff, "circuit manager / requestCircuit - circuit 1 request has expired");
     ok(!$circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "circuit manager / requestCircuit - circuit 1 request has expired and was removed from CIRCUITS");
     ok($circuitManager->{CIRCUITS_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "circuit manager / requestCircuit - circuit 1 request has expired and was placed into CIRCUITS_HISTORY");
@@ -578,6 +589,8 @@ sub testRequestCircuit {
 # 100 failures / hours
 sub testTransferFailure {
     
+    our ($partialIDc1, $partialIDc2);
+    
     # Simulate failures
     sub iFailTransfers {
         my $circuitManager = $_[ARG0];
@@ -585,6 +598,9 @@ sub testTransferFailure {
         my $circuit1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
         my $circuit2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};               
         
+        $partialIDc1 = substr($circuit1->{ID}, 1, 8);
+        $partialIDc2 = substr($circuit2->{ID}, 1, 8);
+            
         $circuit1->{VERBOSE} = 0;
         $circuit2->{VERBOSE} = 0;
          
@@ -611,8 +627,8 @@ sub testTransferFailure {
     
     POE::Kernel->run();
     
-    my $file1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-".formattedTime($time + 0.1);
-    my $file2 = $baseLocation."/data/offline/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-".formattedTime($time + 0.2);
+    my $file1 = $baseLocation."/data/online/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time + 0.1);
+    my $file2 = $baseLocation."/data/offline/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time + 0.2);
     
     ok(-e $file1, "circuit manager / testTransferFailure - circuit 1 wasn't blacklisted yet");
     ok(-e $file2, "circuit manager / testTransferFailure - circuit 2 was put offline"); 
