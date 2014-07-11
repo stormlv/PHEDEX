@@ -3,30 +3,137 @@ package PHEDEX::Tests::File::Download::StressTestCircuitManager;
 use strict;
 use warnings;
 
+use PHEDEX::Core::Timing;
+use PHEDEX::File::Download::Circuits::Constants;
 use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
 use POE;
 use Test::More;
 
+# The purpose of this test is to stress the CircuitManager in creating requests,
+# establishing circuits, tearing them down and eventually removing old circuits from history
+# The main loop runs once every 50ms
+#   0ms         - request a circuit
+#   ~10ms       - TEST: check that request is valid (exist in CM and on disk)
+#   ~20ms       - a circuit is established (Backend induced delay is 20ms   - TIME_SIMULATION = 0.02)
+#   ~30ms       - TEST: check that the circuit established is valid (exist in CM->{CIRCUITS} and on disk, and request was removed from disk) 
+#   ~40ms       - the circuit is torn down (Circuit lifetime is 20ms        - LIFETIME = 0.02)
+#   ~50ms       - TEST: check that the circuit was put offline (exists in CM->{CIRCUITS_OFFLINE} and on disk, and established circuits was removed from disk and from CM->{CIRCUITS})   
+#
+# There's another recurring event @ 1 sec : checks that no circuit present in CM->{CIRCUITS_OFFLINE} is older than 1 second
+
 sub stressTestCircuitCreation {
     
-    sub iStressTestCreation {
-        my ($circuitManager, $session) = @_;
+    our $i = 0;
+    
+    # Used to     
+    our $circuits = [   ['T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'], 
+                        ['T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'],
+                        ['T2_ANSE_CERN_2', 'T2_ANSE_CERN_1'],
+                        ['T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev'],
+                        ['T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_1'],
+                        ['T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_2']];
+                        
+    # Main loop
+    # It creates a circuit request, then sets up a timer to iCheckRequest
+    sub iMainLoop {
+        my ($circuitManager, $session) =  @_[ARG0, ARG1];
         
-        POE::Kernel->post($session, 'requestCircuit',  'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', 0.1);
-        POE::Kernel->delay(\&iStressTestCreation => 0.1, $circuitManager, $session);
+        my $fromNode = $circuits->[$i % 6][0];
+        my $toNode =  $circuits->[$i % 6][1];
+       
+        POE::Kernel->post($session, 'requestCircuit', $fromNode, $toNode, 0.02);
         
+        my $linkName = $fromNode."-to-".$toNode;
+        
+        POE::Kernel->delay(\&iCheckRequest => 0.01, $circuitManager, $linkName);                
+        
+        $i++;        
+        # Event reccurence every 60ms        
+        POE::Kernel->delay(\&iMainLoop => 0.06, $circuitManager, $session);        
     }
     
-    my ($circuitManager, $session) = setupCircuitManager(30, 'creating-circuit-requests.log', undef, undef, 
-                                                            [[\&iStressTestCreation, 0.1]]);       
+    # Checks that a circuit has been requested, then sets up a timer to iCheckEstablished
+    sub iCheckRequest {
+        my ($circuitManager, $linkName) = @_[ARG0, ARG1];
+        
+        my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+        
+        ok(defined $circuit, "stress test / iCheckRequest - Circuit exists in circuit manager");
+        is($circuit->{STATUS}, CIRCUIT_STATUS_REQUESTING,"stress test / iCheckRequest - Circuit is in requesting state in circuit manager");
+        
+        my $path = $circuit->getSaveName();        
+        ok($path  =~ m/requested/ && -e $path, "stress test / iCheckRequest - Circuit (in requesting state) exists on disk as well");
+        
+        POE::Kernel->delay($circuit);
+    }
+    
+    # Checks that a circuit has been established, then sets up a timer to iCheckTeardown
+    sub iCheckEstablished {
+        my ($circuitManager, $linkName) = @_[ARG0, ARG1];
+        
+        my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+        
+        ok(defined $circuit, "stress test / iCheckEstablished - Circuit exists in circuit manager");
+        is($circuit->{STATUS}, CIRCUIT_STATUS_ONLINE,"stress test / iCheckEstablished - Circuit is in established state in circuit manager");
+        
+        my $path = $circuit->getSaveName();        
+        ok($path  =~ m/online/ && -e $path, "stress test / iCheckRequest - Circuit (in established state) exists on disk as well");
+        
+        POE::Kernel->delay(\&iCheckTeardown => 0.02, $circuitManager, $circuit);
+    }
+    
+    # Checks that a circuit has been put in history    
+    sub iCheckTeardown {
+        my ($circuitManager, $circuit) = @_[ARG0, ARG1];
+    
+        my $linkName = $circuit->getLinkName();                       
+        ok(!defined $circuitManager->{CIRCUITS}{$linkName}, "stress test / iCheckTeardown - Circuit doesn't exist in circuit manager anymore");
+        ok(defined $circuitManager->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}}, "stress test / iCheckTeardown - Circuit exists in circuit manager history");
+        
+        is($circuit->{STATUS}, CIRCUIT_STATUS_OFFLINE,"stress test / iCheckTeardown - Circuit is in offline state in circuit manager");
+        
+        my $path = $circuit->getSaveName();        
+        ok($path  =~ m/offline/ && -e $path, "stress test / iCheckRequest - Circuit (in offline state) exists on disk as well");
+    }
+    
+    sub iCheckHistoryTrimming {
+        my ($circuitManager) = @_;
+        
+        my $olderThanNeeded = 0;
+        my $time = &mytimeofday();
+        
+        foreach my $link (keys %{$circuitManager->{CIRCUITS_HISTORY}}){
+            foreach my $circuit (values %{$circuitManager->{CIRCUITS_HISTORY}{$link}}) {
+                $olderThanNeeded++ if ($circuit->{LAST_STATUS_CHANGE} < $time - $circuitManager->{HISTORY_DURATION});
+            }
+        }
+                
+        is($olderThanNeeded, 0, "Circuits older than limit have been dropped from CIRCUITS_HISTORY");
+        
+        POE::Kernel->delay(\&iCheckHistoryTrimming => 1, $circuitManager);
+    }
+
+    my ($circuitManager, $session) = setupCircuitManager(60 * MINUTE, 'creating-circuit-requests.log', undef, 
+                                                            [[\&iMainLoop, 0.01],
+                                                             [\&iCheckRequest, undef],
+                                                             [\&iCheckEstablished, undef],
+                                                             [\&iCheckTeardown, undef],
+                                                             [\&iCheckHistoryTrimming, 1]]);
+    # We don't need all of the log messages                                                             
+    $circuitManager->{VERBOSE} = 0;       
+    
     $circuitManager->Logmsg('Testing events requestCircuit, handleRequestResponse and teardownCircuit');
-    $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.01; 
+    
+    # Booking backend induced delay is 20ms
+    $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.02;
+    # Only keep the last 30 seconds of circuit history 
+    $circuitManager->{HISTORY_DURATION} = 1;
         
     ### Run POE 
     POE::Kernel->run(); 
 }
 
-stressTestCircuitCreation();
+#stressTestCircuitCreation();
 
 done_testing();
 
