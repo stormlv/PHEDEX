@@ -198,7 +198,7 @@ sub testVSCRemoveSimilarCircuits {
     
     ok(!-e $onDiskCircuit->getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously on disk has been removed");            
     ok(-e $inMemoryCircuit->getSaveName(), "circuit manager / verifyStateConsistency - similar circuit previously in memory has been resaved");
-    is($circuitManager->{CIRCUITS}{$inMemoryCircuit->getLinkName()}->{ID}, $inMemoryCircuit->{ID} , "circuit manager / verifyStateConsistency - similar circuit previously in memory has not changed");    
+    is($circuitManager->{CIRCUITS}{$inMemoryCircuit->getLinkName()}{ID}, $inMemoryCircuit->{ID} , "circuit manager / verifyStateConsistency - similar circuit previously in memory has not changed");    
 }
 
 # Test consists of creating a circuit request, then saving it on disk.
@@ -269,7 +269,7 @@ sub testVSCHandleEstablishedCircuits {
     ok($circuitManager->{CIRCUITS}{$establishedNoExpiration->getLinkName()}, "circuit manager / verifyStateConsistency - used established circuit which doesn't have an expiration date");
 }
 
-# Test consists of creating three offline circuits. One of them is older than CIRCUIT_HISTORY_DURATION
+# Test consists of creating three offline circuits. One of them is older than HISTORY_DURATION
 # while the other two are not. The circuit manager should restore the two newer ones
 sub testVSCOfflineCircuits {
     
@@ -279,7 +279,7 @@ sub testVSCOfflineCircuits {
     
     my $time = &mytimeofday();
     
-    my $offlineOld = createOfflineCircuit($time - $circuitManager->{CIRCUIT_HISTORY_DURATION});
+    my $offlineOld = createOfflineCircuit($time - $circuitManager->{HISTORY_DURATION});
     $offlineOld->{CIRCUITDIR} = "$baseLocation".'/data';
     $offlineOld->{PHEDEX_FROM_NODE} = 'T2_ANSE_CERN_1';
     $offlineOld->{PHEDEX_TO_NODE} = 'T2_ANSE_CERN_2';
@@ -321,27 +321,47 @@ sub testVerifyStateConsistency {
 
 # Test consists of putting two links on blacklist at different times...
 # The circuit manager should only remove one of them from the blacklist
-sub testCullBlacklist {
-     # Create a new circuit manager and setup session
-    my ($circuitManager, $session) = setupCircuitManager(0.3, 'blacklisting.log', undef, 0.1);       
-    $circuitManager->Logmsg('Testing event testCullBlacklist');
-    $circuitManager->{BLACKLIST_DURATION} = 0.2;
+sub testHandleTimer {
     
-    # Prepare test
-    my $timeBlacklisted = &mytimeofday();
-    my $timeFailed = $timeBlacklisted - 1;
-    my $link1 = 'T2_ANSE_GENEVA-to-T2_ANSE_AMSTERDAM';
-    my $link2 = 'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2';
+    sub iTestTrimBlacklist {
+        my $circuitManager = $_[ARG0];
+        
+        my $time = &mytimeofday();
+        
+        my $circuit1 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
+        my $circuit2 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_3');
     
-    $circuitManager->{LINKS_BLACKLISTED}{$link1} = [$timeBlacklisted, [$timeFailed, 'Reason 1']];
-    # Second link will be blacklisted 3 seconds after the first. Given that we'll only run for 3 seconds this one won't be unblacklisted
-    $circuitManager->{LINKS_BLACKLISTED}{$link2} = [$timeBlacklisted + 0.2, [$timeFailed, 'Reason 2']];
-
+        $circuitManager->addLinkToBlacklist($circuit1, 'Reason 1', 0.1);
+        $circuitManager->addLinkToBlacklist($circuit2, 'Reason 2', 1);    
+    }
+    
+    sub iTestTrimHistory {
+        my $circuitManager = $_[ARG0];               
+        
+        my $time = &mytimeofday();
+        
+        my $circuit1 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
+        my $circuit2 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_3', 'T2_ANSE_CERN_2');
+        
+        $circuitManager->addCircuitToHistory($circuit1, 0.1);
+        $circuitManager->addCircuitToHistory($circuit2, 1);
+    }
+        
+    # Create a new circuit manager and setup session
+    my ($circuitManager, $session) = setupCircuitManager(0.3, 'handleTimer.log', undef, 
+                                                        [[\&iTestTrimBlacklist, 0.1], 
+                                                         [\&iTestTrimHistory, 0.1]]);       
+    $circuitManager->Logmsg('Testing event handleTimer');
+                    
     ### Run POE          
     POE::Kernel->run();
     
-    ok(!$circuitManager->{LINKS_BLACKLISTED}{$link1}, 'circuit manager / cullBlacklist: first link was unblacklisted ');
-    ok($circuitManager->{LINKS_BLACKLISTED}{$link2}, 'circuit manager / cullBlacklist: second link didn\'t get to be unblacklisted ');
+    
+    ok(!$circuitManager->{LINKS_BLACKLISTED}{"T2_ANSE_CERN_1-to-T2_ANSE_CERN_2"}, 'circuit manager / testHandleTimer: first link was unblacklisted ');
+    ok($circuitManager->{LINKS_BLACKLISTED}{"T2_ANSE_CERN_2-to-T2_ANSE_CERN_3"}, 'circuit manager / testHandleTimer: second link didn\'t get to be unblacklisted ');    
+    
+    is(scalar keys %{$circuitManager->{CIRCUITS_HISTORY}{"T2_ANSE_CERN_2-to-T2_ANSE_CERN_1"}}, 0, 'circuit manager / testHandleTimer: first circuit was removed from history ');
+    is(scalar keys %{$circuitManager->{CIRCUITS_HISTORY}{"T2_ANSE_CERN_3-to-T2_ANSE_CERN_2"}}, 1, 'circuit manager / testHandleTimer: second circuit wasn\'t removed from history ');
 }
 
 # Test consists of calling requestCircuit several times with different invalid parameters
@@ -352,7 +372,7 @@ sub testRCInvalidCircuitRequests {
     my $time = &mytimeofday();
     
     ### Prepare things to test 
-    $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'} = 'randomStuffPosingAsACircuit';    
+    $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'} = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');;    
     POE::Kernel->post($session, 'requestCircuit',  undef, 'T2_ANSE_CERN_1', undef);
     POE::Kernel->post($session, 'requestCircuit',  'T2_ANSE_CERN_2', undef, undef);    
     POE::Kernel->post($session, 'requestCircuit',  'T2_ANSE_CERN_1', 'T2_ANSE_CERN_3', undef);
@@ -371,7 +391,7 @@ sub testRCInvalidCircuitRequests {
 
 # Test consists of calling requestCircuit two times with valid parameters (one of which will declare a circuit with a limited life) 
 # This basically tests events requestCircuit, handleRequestResponse and teardownCircuit. 
-# Itshould run for 0.7 seconds...  
+# It should run for 0.7 seconds...  
 #  @ 0.2 sec: iTestCreationOfRequests   checks that requests are on disk
 #  @ 0.4 sec: iTestSwitchToEstablished  checks that requests have been transformed into established circuits, and are on disk
 #  @ 0.6 sec: iTestSwitchToOffline      checks that one of the circuits went offline
@@ -461,7 +481,7 @@ sub testRCCreatesRequests {
         is($circuitManager->{CIRCUITS_HISTORY}{$circuit2->getLinkName()}{$circuit2->{ID}}{STATUS}, CIRCUIT_STATUS_OFFLINE, "circuit manager / requestCircuit - circuit 2 status in circuit manager is correct");
     }
     
-    my ($circuitManager, $session) = setupCircuitManager(0.7, 'creating-circuit-requests.log', undef, undef, 
+    my ($circuitManager, $session) = setupCircuitManager(0.7, 'creating-circuit-requests.log', undef, 
                                                             [[\&iTestCreationOfRequests, 0.2], 
                                                              [\&iTestSwitchToEstablished, 0.4],
                                                              [\&iTestSwitchToOffline, 0.6]]);       
@@ -480,7 +500,7 @@ sub testRCCreatesRequests {
 sub testRCExpiringCircuitRequests {       
     my $time = &mytimeofday();
     
-    my ($circuitManager, $session) = setupCircuitManager(0.3, 'circuit-request-expires.log', undef, undef);
+    my ($circuitManager, $session) = setupCircuitManager(0.3, 'circuit-request-expires.log');
     $circuitManager->Logmsg('Testing event requestCircuit');
     $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.2;
     $circuitManager->{CIRCUIT_REQUEST_TIMEOUT} = 0.1;
@@ -549,7 +569,7 @@ sub testTransferFailure {
            
     my $time = &mytimeofday();
     
-    my ($circuitManager, $session) = setupCircuitManager(0.4, 'circuit-request-expires.log', undef, undef,
+    my ($circuitManager, $session) = setupCircuitManager(0.4, 'circuit-request-expires.log', undef,
                                                             [[\&iFailTransfers, 0.2]]);
     $circuitManager->Logmsg('Testing event transferFailed');
     $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.1;
@@ -572,7 +592,7 @@ File::Path::make_path("$baseLocation".'/logs', { error => \my $err});
     
 testHelperMethods();
 testVerifyStateConsistency();
-testCullBlacklist();
+testHandleTimer();
 testRequestCircuit();
 testTransferFailure();
 

@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use base 'PHEDEX::Core::Logging', 'Exporter';
+use List::Util qw(min);
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
 use PHEDEX::File::Download::Circuits::Circuit;
@@ -14,10 +15,9 @@ use Switch;
 my $ownHandles = {
     # OWN
     VERIFY_STATE        =>      'verifyStateConsistency',
-    CULL_LIST           =>      'cullBlacklist',
     REQUEST             =>      'requestCircuit',
     REQUEST_REPLY       =>      'handleRequestResponse',
-    REQUEST_TIMER       =>      'handleRequestTimeout',
+    HANDLE_TIMER       =>       'handleTimer',
     TEARDOWN            =>      'teardownCircuit',     
 };
 
@@ -39,7 +39,7 @@ sub new
             # which makes looking for which circuits are online or in request, easy.
             # We might want to support more than one per link. In this case, the above will need changing  
             CIRCUITS                        => {},          # All circuits in request or established, grouped by link (LINK -> CIRCUIT)
-            CIRCUITS_HISTORY                => {},          # All circuits no older than CIRCUIT_HISTORY_DURATION, which are offline, grouped by link then ID (LINK -> ID -> [CIRCUIT1,...])
+            CIRCUITS_HISTORY                => {},          # All circuits no older than HISTORY_DURATION, which are offline, grouped by link then ID (LINK -> ID -> [CIRCUIT1,...])
             CIRCUIT_SCOPE                   =>  'GENERIC',
                                                                  	  	    
 	  	    LINKS_BLACKLISTED               => {},          # Links (w/ circuits) which were blacklisted either because requests 
@@ -48,16 +48,15 @@ sub new
             CIRCUITDIR                      => '',
             
             BLACKLIST_DURATION              => HOUR,        # Time in seconds, after which a circuit will be reconsidered
-            CIRCUIT_HISTORY_DURATION        => 6*HOUR,      # Time in seconds after which a circuit will be removed from the OFFLINE hash
+            HISTORY_DURATION                => 6 * HOUR,    # Time in seconds after which a circuit will be removed from the OFFLINE hash
             
             MAX_HOURLY_FAILURE_RATE         => 100,         # Maximum of 100 transfers in one hour can fail 
 
             # Timings of periodic events                                              
-            PERIOD_CONSISTENCY_CHECK        => MINUTE,          # Period for event verify_state_consistency  
-            PERIOD_BLACKLIST_CULLING        => MINUTE,          # Period for event cull_blacklist      
+            PERIOD_CONSISTENCY_CHECK        => MINUTE,      # Period for event verify_state_consistency  
             
             # Time out counters
-            CIRCUIT_REQUEST_TIMEOUT         => 5*MINUTE,        # If we don't get it by then, we'll most likely not get them at all         
+            CIRCUIT_REQUEST_TIMEOUT         => 5*MINUTE,    # If we don't get it by then, we'll most likely not get them at all         
             
             # Circuit booking backend options
             BACKEND_TYPE                    => undef,
@@ -73,7 +72,7 @@ sub new
     #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
     my $self = $class->SUPER::new(%args);
-
+    
     # Load circuit booking backend    
     my $backend = $args{BACKEND_TYPE};
     my %backendArgs = %{$args{BACKEND_ARGS}} unless ! defined $args{BACKEND_ARGS};
@@ -112,7 +111,6 @@ sub _poe_init
       
     # Get the periodic events going 
     $kernel->yield($ownHandles->{VERIFY_STATE}) if (defined $self->{PERIOD_CONSISTENCY_CHECK});
-    $kernel->yield($ownHandles->{CULL_LIST}) if (defined $self->{PERIOD_BLACKLIST_CULLING});;
 }
 
 # Method used to check if a circuit is either in request or online
@@ -313,10 +311,10 @@ sub verifyStateConsistency
                     }                                              
                 }                  
                 case 'offline' {
-                    # Only add the most recent (up to CIRCUIT_HISTORY_DURATION) circuit history
-                    if ($circuit->{LAST_STATUS_CHANGE} > $timeNow - $self->{CIRCUIT_HISTORY_DURATION}) {
+                    # Only add the most recent (up to HISTORY_DURATION) circuit history
+                    if ($circuit->{LAST_STATUS_CHANGE} > $timeNow - $self->{HISTORY_DURATION}) {
                         $self->Logmsg("$mess: Found offline circuit. Adding it to history");
-                        $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}} = $circuit;                        
+                        $self->addCircuitToHistory($circuit);                                               
                     }
                 }
             }
@@ -324,31 +322,29 @@ sub verifyStateConsistency
     }
 }
 
-# Circuits can be blacklisted for two reasons
-# 1. A circuit request previously failed
-#   - to prevent successive multiple retries to the same IDC, we temporarily blacklist that particular link
-# 2. Multiple files in a job failed while being transferred on the circuit
-#   - if transfers fail because of a circuit error, by default PhEDEx will retry transfers on the same link
-#   we temporarily blacklist that particular link and PhEDEx will retry on a "standard" link instead
-sub cullBlacklist {
-    my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION];    
-    my (@circuitsRequested, @circuitsEstablished);
+# Adds a circuit to CIRCUITS_HISTORY and starts a timer to remove it after HISTORY_DURATION
+sub addCircuitToHistory {
+    my ($self, $circuit, $timer) = @_;
+    return if ! defined $circuit;
+    $timer = $self->{HISTORY_DURATION} if ! defined $timer;
     
-    my $mess = "CircuitManager->$ownHandles->{CULL_LIST}";  
+    $self->Logmsg("CircuitManager->addCircuitToHistory: Adding circuit ($circuit->{ID}) to history. It will be removed after $timer seconds");
     
-    $self->Logmsg("$mess: Enter event") if ($self->{VERBOSE});    
-    $self->delay_max($kernel, $ownHandles->{CULL_LIST}, $self->{PERIOD_BLACKLIST_CULLING}) if (defined $self->{PERIOD_BLACKLIST_CULLING});;
+    $self->{CIRCUITS_HISTORY}{$circuit->getLinkName()}{$circuit->{ID}} = $circuit;    
+    POE::Kernel->delay_add($ownHandles->{HANDLE_TIMER}, $timer, CIRCUIT_TIMER_HISTORY, $circuit);
+}
+
+# Blacklists a link and starts a timer to unblacklist it after BLACKLIST_DURATION
+sub addLinkToBlacklist {
+    my ($self, $circuit, $fault, $timer) = @_;
+    return if ! defined $circuit;        
+    my $linkName = $circuit->getLinkName();
+    $timer = $self->{BLACKLIST_DURATION} if ! defined $timer;
     
-    foreach my $linkName (keys %{$self->{LINKS_BLACKLISTED}}) {
-        my $listData = $self->{LINKS_BLACKLISTED}{$linkName};
-        my $time = $listData->[0];
-        my $details = $listData->[1];
-        
-        if ($time + $self->{BLACKLIST_DURATION} < &mytimeofday()) {
-            $self->Logmsg("$mess: Removing $linkName from blacklist after $self->{BLACKLIST_DURATION} seconds");
-            delete  $self->{LINKS_BLACKLISTED}{$linkName};
-        }
-    }
+    $self->Logmsg("CircuitManager->addLinkToBlacklist: Adding link ($linkName) to history. It will be removed after $timer seconds");
+    
+    $self->{LINKS_BLACKLISTED}{$linkName} = $fault;
+    POE::Kernel->delay_add($ownHandles->{HANDLE_TIMER}, $timer, CIRCUIT_TIMER_BLACKLIST, $circuit);
 }
 
 # This routine is called by the CircuitAgent when a transfer fails
@@ -385,7 +381,7 @@ sub transferFailed {
         $self->Logmsg("$mess: Blacklisting $linkName due to too many transfer failures");
         
         # Blacklist the circuit
-        $self->{LINKS_BLACKLISTED}{$linkName} = [$now, $transferFailures];
+        $self->addLinkToBlacklist($circuit, CIRCUIT_TRANSFERS_FAILED);
         
         # Tear it down
         POE::Kernel->call($self->{SESSION_ID}, $ownHandles->{TEARDOWN}, $circuit);
@@ -438,7 +434,7 @@ sub requestCircuit {
         $circuit->saveState();
         
         # Start the watchdog in case the request times out
-        $kernel->delay_add($ownHandles->{REQUEST_TIMER}, $circuit->{CIRCUIT_REQUEST_TIMEOUT}, $circuit);
+        $kernel->delay_add($ownHandles->{HANDLE_TIMER}, $circuit->{CIRCUIT_REQUEST_TIMEOUT}, CIRCUIT_TIMER_REQUEST, $circuit);
         $kernel->post($session, $backHandles->{BACKEND_REQUEST}, $circuit, $ownHandles->{REQUEST_REPLY});
     };
 
@@ -472,18 +468,18 @@ sub handleRequestFailure {
         
         # Remove from hash of all circuits, then add it to the historical list
         delete $self->{CIRCUITS}{$linkName};
-        $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}} = $circuit;
+        $self->addCircuitToHistory($circuit);
+        
         
         my $now = &mytimeofday();
         
         # Update circuit object internal data as well
         $circuit->registerRequestFailure($code);
+        $circuit->saveState();
         
         # Blacklist this link 
         # This needs to be done *after* we register the failure with the circuit
-        $self->{LINKS_BLACKLISTED}{$linkName} = [$now, $circuit->getFailedRequest()];       
-       
-        $circuit->saveState();
+        $self->addLinkToBlacklist($circuit, CIRCUIT_REQUEST_FAILED);
     }
         
 }
@@ -527,18 +523,54 @@ sub handleRequestResponse {
     }
 }
 
-sub handleRequestTimeout {
-    my ($self, $kernel, $session, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0];
+sub handleTimer {
+    my ($self, $kernel, $session, $timerType, $circuit) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     
-    my $mess = "CircuitManager->$ownHandles->{REQUEST_TIMER}";
+    my $mess = "CircuitManager->$ownHandles->{HANDLE_TIMER}";
     
-    if (!defined $circuit) {
-        $self->Logmsg("$mess: something went horribly wrong... Didn't receive a circuit back");
-         return;        
-    } 
+    if (!defined $timerType || !defined $circuit) {
+        $self->Logmsg("$mess: Don't know how to handle this timer");
+        return;        
+    }
     
-    $self->Logmsg("$mess: Timer has expired. Request will be ignored and link blacklisted");
-    $self->handleRequestFailure($circuit, CIRCUIT_REQUEST_FAILED_TIMEDOUT);   
+    my $linkName = $circuit->getLinkName();
+    
+    switch ($timerType) {
+        case CIRCUIT_TIMER_REQUEST {
+            $self->Logmsg("$mess: Timer for circuit request on link ($linkName) has expired");
+            $self->handleRequestFailure($circuit, CIRCUIT_REQUEST_FAILED_TIMEDOUT);
+        }
+        case CIRCUIT_TIMER_BLACKLIST {
+            $self->Logmsg("$mess: Timer for blacklisted link ($linkName) has expired");
+            $self->handleTrimBlacklist($circuit);  
+        }
+        case CIRCUIT_TIMER_HISTORY {
+            $self->Logmsg("$mess: Timer for circuit ($circuit->{ID}) placed in history has expired");
+            $self->handleTrimHistory($circuit);
+        }
+    }
+}
+
+# Circuits can be blacklisted for two reasons
+# 1. A circuit request previously failed
+#   - to prevent successive multiple retries to the same IDC, we temporarily blacklist that particular link
+# 2. Multiple files in a job failed while being transferred on the circuit
+#   - if transfers fail because of a circuit error, by default PhEDEx will retry transfers on the same link
+#   we temporarily blacklist that particular link and PhEDEx will retry on a "standard" link instead
+sub handleTrimBlacklist {
+    my ($self, $circuit) = @_;
+    return if ! defined $circuit;    
+    my $linkName = $circuit->getLinkName();    
+    $self->Logmsg("CircuitManager->handleTrimBlacklist: Removing $linkName from blacklist");
+    delete $self->{LINKS_BLACKLISTED}{$linkName} if defined $self->{LINKS_BLACKLISTED}{$linkName};
+}
+
+sub handleTrimHistory {
+    my ($self, $circuit) = @_;
+    return if ! defined $circuit;    
+    my $linkName = $circuit->getLinkName();    
+    $self->Logmsg("CircuitManager->handleTrimHistory: Removing $circuit->{ID} from history") if $self->{VERBOSE};
+    delete $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}} if defined $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}};
 }
 
 sub teardownCircuit {
@@ -559,7 +591,7 @@ sub teardownCircuit {
             
         # Remove from hash of all circuits, then add it to the historical list
         delete $self->{CIRCUITS}{$linkName};
-        $self->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}} = $circuit;
+        $self->addCircuitToHistory($circuit);        
             
         # Update circuit object data  
         $circuit->registerTakeDown();

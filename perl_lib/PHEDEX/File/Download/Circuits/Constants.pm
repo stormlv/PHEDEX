@@ -14,6 +14,8 @@ our @EXPORT = qw(CIRCUIT_STATUS_REQUESTING CIRCUIT_STATUS_ONLINE CIRCUIT_STATUS_
                  
                  CIRCUIT_TRANSFERS_FAILED CIRCUIT_ALREADY_REQUESTED CIRCUIT_BLACKLISTED CIRCUIT_UNAVAILABLE CIRCUIT_AVAILABLE CIRCUIT_INVALID
                  
+                 CIRCUIT_TIMER_REQUEST CIRCUIT_TIMER_BLACKLIST CIRCUIT_TIMER_HISTORY
+                 
                  MINUTE HOUR DAY
                  );
 
@@ -50,6 +52,10 @@ use constant {
     CIRCUIT_BLACKLISTED             =>          -42,    # Circuits have been temporarily blacklisted on current link
     CIRCUIT_UNAVAILABLE             =>          -43,    # Circuits not supported on current link    
     CIRCUIT_INVALID                 =>          -44,    # Provided link is not a valid one
+    
+    CIRCUIT_TIMER_REQUEST           =>          50,     # Used to handle a timer which expired for a request
+    CIRCUIT_TIMER_BLACKLIST         =>          51,     # Used to handle a timer which expired for a circuit which was blacklisted
+    CIRCUIT_TIMER_HISTORY           =>          52,     # Used to handle a timer which expired for a circuit which was in the circuit history list
     
     # Time constants
     MINUTE  =>      60,
