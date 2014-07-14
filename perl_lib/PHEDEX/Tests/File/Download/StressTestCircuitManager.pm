@@ -3,6 +3,7 @@ package PHEDEX::Tests::File::Download::StressTestCircuitManager;
 use strict;
 use warnings;
 
+use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
 use PHEDEX::File::Download::Circuits::Constants;
 use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
@@ -18,8 +19,6 @@ use Test::More;
 #   ~30ms       - TEST: check that the circuit established is valid (exist in CM->{CIRCUITS} and on disk, and request was removed from disk) 
 #   ~40ms       - the circuit is torn down (Circuit lifetime is 20ms        - LIFETIME = 0.02)
 #   ~50ms       - TEST: check that the circuit was put offline (exists in CM->{CIRCUITS_OFFLINE} and on disk, and established circuits was removed from disk and from CM->{CIRCUITS})   
-#
-# There's another recurring event @ 1 sec : checks that no circuit present in CM->{CIRCUITS_OFFLINE} is older than 1 second
 
 sub stressTestCircuitCreation {
     
@@ -47,6 +46,10 @@ sub stressTestCircuitCreation {
         
         POE::Kernel->delay(\&iCheckRequest => 0.01, $circuitManager, $linkName);                
         
+        my $eventCount = POE::Kernel->get_event_count();
+        
+        print "event count $eventCount \n";
+        
         $i++;        
         # Event reccurence every 60ms        
         POE::Kernel->delay(\&iMainLoop => 0.06, $circuitManager, $session);        
@@ -64,7 +67,7 @@ sub stressTestCircuitCreation {
         my $path = $circuit->getSaveName();        
         ok($path  =~ m/requested/ && -e $path, "stress test / iCheckRequest - Circuit (in requesting state) exists on disk as well");
         
-        POE::Kernel->delay($circuit);
+        POE::Kernel->delay(\&iCheckEstablished => 0.02, $circuitManager, $linkName);
     }
     
     # Checks that a circuit has been established, then sets up a timer to iCheckTeardown
@@ -97,23 +100,19 @@ sub stressTestCircuitCreation {
     }
     
     sub iCheckHistoryTrimming {
-        my ($circuitManager) = @_;
+        my ($circuitManager) = $_[ARG0];
         
-        my $olderThanNeeded = 0;
-        my $time = &mytimeofday();
+        my ($olderThanNeeded, @circuitsOffline);        
         
-        foreach my $link (keys %{$circuitManager->{CIRCUITS_HISTORY}}){
-            foreach my $circuit (values %{$circuitManager->{CIRCUITS_HISTORY}{$link}}) {
-                $olderThanNeeded++ if ($circuit->{LAST_STATUS_CHANGE} < $time - $circuitManager->{HISTORY_DURATION});
-            }
-        }
+        &getdir($circuitManager->{CIRCUITDIR}."/offline", \@circuitsOffline);
+        
+        ok(scalar @{$circuitManager->{CIRCUITS_HISTORY_QUEUE}} <=  $circuitManager->{MAX_HISTORY_SIZE}, "There are no more than $circuitManager->{MAX_HISTORY_SIZE} circuits in HISTORY");
+        ok(scalar @circuitsOffline <=  $circuitManager->{MAX_HISTORY_SIZE}, "There are no more than $circuitManager->{MAX_HISTORY_SIZE} circuits in HISTORY folder");
                 
-        is($olderThanNeeded, 0, "Circuits older than limit have been dropped from CIRCUITS_HISTORY");
-        
         POE::Kernel->delay(\&iCheckHistoryTrimming => 1, $circuitManager);
     }
 
-    my ($circuitManager, $session) = setupCircuitManager(60 * MINUTE, 'creating-circuit-requests.log', undef, 
+    my ($circuitManager, $session) = setupCircuitManager(MINUTE, 'creating-circuit-requests.log', undef, 
                                                             [[\&iMainLoop, 0.01],
                                                              [\&iCheckRequest, undef],
                                                              [\&iCheckEstablished, undef],
@@ -125,15 +124,16 @@ sub stressTestCircuitCreation {
     $circuitManager->Logmsg('Testing events requestCircuit, handleRequestResponse and teardownCircuit');
     
     # Booking backend induced delay is 20ms
-    $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.02;
-    # Only keep the last 30 seconds of circuit history 
-    $circuitManager->{HISTORY_DURATION} = 1;
+    $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.02;    
+    $circuitManager->{SYNC_HISTORY_FOLDER} = 1;
         
     ### Run POE 
-    POE::Kernel->run(); 
+    POE::Kernel->run();
+    
+    print "The end\n";
 }
 
-#stressTestCircuitCreation();
+stressTestCircuitCreation();
 
 done_testing();
 

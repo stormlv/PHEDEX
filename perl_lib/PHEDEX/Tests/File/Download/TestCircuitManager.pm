@@ -279,7 +279,7 @@ sub testVSCOfflineCircuits {
     
     my $time = &mytimeofday();
     
-    my $offlineOld = createOfflineCircuit($time - $circuitManager->{HISTORY_DURATION});
+    my $offlineOld = createOfflineCircuit($time - 20);
     $offlineOld->{CIRCUITDIR} = "$baseLocation".'/data';
     $offlineOld->{PHEDEX_FROM_NODE} = 'T2_ANSE_CERN_1';
     $offlineOld->{PHEDEX_TO_NODE} = 'T2_ANSE_CERN_2';
@@ -302,7 +302,7 @@ sub testVSCOfflineCircuits {
     
     my $linkName = $offlineNew1->getLinkName();
     ok($circuitManager->{CIRCUITS_HISTORY}{$linkName}, "circuit manager / verifyStateConsistency - Restored offline circuits");
-    is(keys %{$circuitManager->{CIRCUITS_HISTORY}{$linkName}}, 2,"circuit manager / verifyStateConsistency - Restored 2 offline circuits");
+    is(keys %{$circuitManager->{CIRCUITS_HISTORY}{$linkName}}, 3,"circuit manager / verifyStateConsistency - Restored 2 offline circuits");
     is_deeply($circuitManager->{CIRCUITS_HISTORY}{$linkName}{$offlineNew1->{ID}}, $offlineNew1, "circuit manager / verifyStateConsistency - Restored correct offline circuit");
     is_deeply($circuitManager->{CIRCUITS_HISTORY}{$linkName}{$offlineNew2->{ID}}, $offlineNew2, "circuit manager / verifyStateConsistency - Restored correct offline circuit");
 }
@@ -335,22 +335,9 @@ sub testHandleTimer {
         $circuitManager->addLinkToBlacklist($circuit2, 'Reason 2', 1);    
     }
     
-    sub iTestTrimHistory {
-        my $circuitManager = $_[ARG0];               
-        
-        my $time = &mytimeofday();
-        
-        my $circuit1 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-        my $circuit2 = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_3', 'T2_ANSE_CERN_2');
-        
-        $circuitManager->addCircuitToHistory($circuit1, 0.1);
-        $circuitManager->addCircuitToHistory($circuit2, 1);
-    }
-        
     # Create a new circuit manager and setup session
     my ($circuitManager, $session) = setupCircuitManager(0.3, 'handleTimer.log', undef, 
-                                                        [[\&iTestTrimBlacklist, 0.1], 
-                                                         [\&iTestTrimHistory, 0.1]]);       
+                                                        [[\&iTestTrimBlacklist, 0.1]]);       
     $circuitManager->Logmsg('Testing event handleTimer');
                     
     ### Run POE          
@@ -358,10 +345,7 @@ sub testHandleTimer {
     
     
     ok(!$circuitManager->{LINKS_BLACKLISTED}{"T2_ANSE_CERN_1-to-T2_ANSE_CERN_2"}, 'circuit manager / testHandleTimer: first link was unblacklisted ');
-    ok($circuitManager->{LINKS_BLACKLISTED}{"T2_ANSE_CERN_2-to-T2_ANSE_CERN_3"}, 'circuit manager / testHandleTimer: second link didn\'t get to be unblacklisted ');    
-    
-    is(scalar keys %{$circuitManager->{CIRCUITS_HISTORY}{"T2_ANSE_CERN_2-to-T2_ANSE_CERN_1"}}, 0, 'circuit manager / testHandleTimer: first circuit was removed from history ');
-    is(scalar keys %{$circuitManager->{CIRCUITS_HISTORY}{"T2_ANSE_CERN_3-to-T2_ANSE_CERN_2"}}, 1, 'circuit manager / testHandleTimer: second circuit wasn\'t removed from history ');
+    ok($circuitManager->{LINKS_BLACKLISTED}{"T2_ANSE_CERN_2-to-T2_ANSE_CERN_3"}, 'circuit manager / testHandleTimer: second link didn\'t get to be unblacklisted ');           
 }
 
 # Test consists of calling requestCircuit several times with different invalid parameters
