@@ -55,7 +55,7 @@ use constant {
     
     CIRCUIT_TIMER_REQUEST           =>          50,     # Used to handle a timer which expired for a request
     CIRCUIT_TIMER_BLACKLIST         =>          51,     # Used to handle a timer which expired for a circuit which was blacklisted 
-    CIRCUIT_TIMER_TEARDOWN          =>          52,
+    CIRCUIT_TIMER_TEARDOWN          =>          52,     # Used to handle a timer which expired for a circuit's life
     
     # Time constants
     MINUTE  =>      60,

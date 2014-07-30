@@ -42,7 +42,7 @@ sub new
 }
 
 sub backendRequestCircuit {
-    my ( $self, $kernel, $session, $circuit, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
+    my ($self, $kernel, $session, $circuit, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
    
     if (!defined $circuit) {
         $self->Logmsg("Circuit provided is invalid :|");   
@@ -58,10 +58,18 @@ sub backendRequestCircuit {
         BANDWIDTH       =>      min($self->{AGENT_TRANSLATION}{$fromNode}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$toNode}{BANDWIDTH}), 
     };
     
-    $self->Logmsg("Circuit established between $fromNode and $toNode with a BW of $self->{DEFAULT_BANDWIDTH}");    
+    $self->Logmsg("Dummy backend call for circuit creation between $fromNode and $toNode with a BW of $self->{DEFAULT_BANDWIDTH}");    
     # In this particular case the IPs of the agents are also the IPs of the circuit endpoints
-     
-    $kernel->delay_add($callback, $self->{TIME_SIMULATION}, $circuit, $returnValues, CIRCUIT_REQUEST_SUCCEEDED);
+    
+    # Simulate a non response from backend if the time simulation is undef
+    return if (!defined $self->{TIME_SIMULATION});
+    
+    if ($self->{TIME_SIMULATION} >= 0) {
+        $kernel->delay_add($callback, $self->{TIME_SIMULATION}, $circuit, $returnValues, CIRCUIT_REQUEST_SUCCEEDED);               
+    } else {
+        $kernel->delay_add($callback, -$self->{TIME_SIMULATION}, $circuit, $returnValues, CIRCUIT_REQUEST_FAILED);
+    }
+   
 }
 
 sub backendTeardownCircuit { 

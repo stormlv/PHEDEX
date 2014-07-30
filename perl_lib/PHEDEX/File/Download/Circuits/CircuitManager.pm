@@ -354,7 +354,7 @@ sub addCircuitToHistory {
 
 # Blacklists a link and starts a timer to unblacklist it after BLACKLIST_DURATION
 sub addLinkToBlacklist {
-    my ($self, $circuit, $fault, $timer) = @_;
+    my ($self, $circuit, $fault, $delay) = @_;
     
     my $msg = "CircuitManager->addLinkToBlacklist"; 
     
@@ -364,12 +364,12 @@ sub addLinkToBlacklist {
     }
        
     my $linkName = $circuit->getLinkName();
-    $timer = $self->{BLACKLIST_DURATION} if ! defined $timer;
+    $delay = $self->{BLACKLIST_DURATION} if ! defined $delay;
     
-    $self->Logmsg("$msg: Adding link ($linkName) to history. It will be removed after $timer seconds");
+    $self->Logmsg("$msg: Adding link ($linkName) to history. It will be removed after $delay seconds");
     
     $self->{LINKS_BLACKLISTED}{$linkName} = $fault;
-    POE::Kernel->delay_add($ownHandles->{HANDLE_TIMER}, $timer, CIRCUIT_TIMER_BLACKLIST, $circuit);
+    $self->delayAdd($poe_kernel, $ownHandles->{HANDLE_TIMER}, $delay, CIRCUIT_TIMER_BLACKLIST, $circuit);
 }
 
 # This routine is called by the CircuitAgent when a transfer fails
@@ -431,10 +431,14 @@ sub requestCircuit {
     }
        
     my $linkName = &getLink($from_node, $to_node);
-    
-    # This check theoretically shouldn't really be necessary    
+       
     if ($self->{CIRCUITS}{$linkName}) {
         $self->Logmsg("$msg: Skipping request for $linkName since there is already a request/circuit ongoing");
+        return;
+    }
+    
+    if ($self->{LINKS_BLACKLISTED}{$linkName}) {
+        $self->Logmsg("$msg: Skipping request for $linkName since it is currently blacklisted");
         return;
     }
           
@@ -450,7 +454,7 @@ sub requestCircuit {
     $circuit->setNodes($from_node, $to_node);
     $circuit->{CIRCUIT_REQUEST_TIMEOUT} = $self->{CIRCUIT_REQUEST_TIMEOUT};
     
-    $self->Logmsg("$msg: Created circuit for link $linkName (Circuit ID = $circuit->{ID})");
+    $self->Logmsg("$msg: Created circuit in request state for link $linkName (Circuit ID = $circuit->{ID})");
         
     # Switch from the 'offline' to 'requesting' state, save to disk and store this in our memory
     eval {                                                                                                            
@@ -458,8 +462,7 @@ sub requestCircuit {
         $self->{CIRCUITS}{$linkName} = $circuit;
         $circuit->saveState();
         
-        # Start the watchdog in case the request times out
-        
+        # Start the watchdog in case the request times out        
         $self->delayAdd($kernel, $ownHandles->{HANDLE_TIMER}, $circuit->{CIRCUIT_REQUEST_TIMEOUT}, CIRCUIT_TIMER_REQUEST, $circuit);
               
         $kernel->post($session, $backHandles->{BACKEND_REQUEST}, $circuit, $ownHandles->{REQUEST_REPLY});
@@ -487,6 +490,9 @@ sub handleRequestFailure {
         $self->Logmsg("$msg: Can't do anything with this circuit");
         return;
     }
+    
+    # We got a response for the request - we need to remove the timer set in case the request timed out 
+    $self->delayRemove($poe_kernel, CIRCUIT_TIMER_REQUEST, $circuit);
     
     eval {
         $self->Logmsg("$msg: Updating internal data");
@@ -523,9 +529,6 @@ sub handleRequestResponse {
     
     my $linkName = $circuit->getLinkName();
     
-    # We got a response for the request - we need to remove the timer set in case the request timed out 
-    $self->delayRemove($kernel, CIRCUIT_TIMER_REQUEST, $circuit);
-    
     if ($circuit->{STATUS} != CIRCUIT_STATUS_REQUESTING) {
         $self->Logmsg("$msg: Can't do anything with this circuit");
         return;
@@ -533,10 +536,13 @@ sub handleRequestResponse {
     
     # If the circuit request failed, call the method handling request failures
     if ($code < 0) {
-        $self->handleRequestFailure($circuit, $code);
         $self->Logmsg("$msg: Circuit request failed for $linkName");
+        $self->handleRequestFailure($circuit, $code);        
         return;        
     } 
+    
+    # We got a response for the request - we need to remove the timer set in case the request timed out 
+    $self->delayRemove($kernel, CIRCUIT_TIMER_REQUEST, $circuit);
     
     # If the circuit request succeeded ... yay   
     $self->Logmsg("$msg: Circuit request succeeded for $linkName"); 
@@ -591,6 +597,7 @@ sub handleTrimBlacklist {
     my $linkName = $circuit->getLinkName();    
     $self->Logmsg("CircuitManager->handleTrimBlacklist: Removing $linkName from blacklist");
     delete $self->{LINKS_BLACKLISTED}{$linkName} if defined $self->{LINKS_BLACKLISTED}{$linkName};
+    $self->delayRemove($poe_kernel, CIRCUIT_TIMER_BLACKLIST, $circuit);
 }
 
 sub handleCircuitTeardown {
