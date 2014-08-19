@@ -9,6 +9,8 @@ our @EXPORT = qw(CIRCUIT_STATUS_REQUESTING CIRCUIT_STATUS_ONLINE CIRCUIT_STATUS_
                  CIRCUIT_ERROR_SAVING CIRCUIT_ERROR_OPENING CIRCUIT_GENERIC_ERROR
                  CIRCUIT_OK CIRCUIT_FAILED_REQUEST CIRCUIT_FAILED_TRANSFERS
                  
+                 CIRCUIT_EXTERNAL_PID CIRCUIT_EXTERNAL_EVENTNAME CIRCUIT_EXTERNAL_OUTPUT
+                 
                  CIRCUIT_REQUEST_SUCCEEDED 
                  CIRCUIT_REQUEST_FAILED CIRCUIT_REQUEST_FAILED_PARAMS CIRCUIT_REQUEST_FAILED_SLOTS CIRCUIT_REQUEST_FAILED_BW CIRCUIT_REQUEST_FAILED_IDC CIRCUIT_REQUEST_FAILED_TIMEDOUT
                  
@@ -44,6 +46,10 @@ use constant {
     CIRCUIT_REQUEST_FAILED_BW       =>          -33,     # Cannot supply bandwidth required
     CIRCUIT_REQUEST_FAILED_IDC      =>          -34,     # Cannot contact IDC
     CIRCUIT_REQUEST_FAILED_TIMEDOUT =>          -35,
+    
+    CIRCUIT_EXTERNAL_PID            =>          0,     # PID Index in arguments passed back via an action by External.pm
+    CIRCUIT_EXTERNAL_EVENTNAME      =>          1,     # PID Index in arguments passed back via an action by External.pm
+    CIRCUIT_EXTERNAL_OUTPUT         =>          2,     # PID Index in arguments passed back via an action by External.pm
     
     # Related to CircuitManager.pm
     CIRCUIT_AVAILABLE               =>          40,     # Go ahead and request a circuit 
