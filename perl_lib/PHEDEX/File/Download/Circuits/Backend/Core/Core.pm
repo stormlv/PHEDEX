@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Core;
+package PHEDEX::File::Download::Circuits::Backend::Core::Core;
 
 use strict;
 use warnings;

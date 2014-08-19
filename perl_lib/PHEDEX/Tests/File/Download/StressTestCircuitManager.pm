@@ -59,7 +59,7 @@ sub getLink {
     my $toNode =  $links->[$linkIndex][1];
     my $linkName = $fromNode."-to-".$toNode;
     
-    $linkIndex = $linkIndex++ % @{$links};
+    $linkIndex = ++$linkIndex % @{$links};
     
     return ($fromNode, $toNode, $linkName);
 }

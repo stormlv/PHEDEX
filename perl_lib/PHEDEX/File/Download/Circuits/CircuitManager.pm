@@ -99,7 +99,7 @@ sub _poe_init
     $self->Logmsg("$msg: Initializing all POE events") if ($self->{VERBOSE});
     
     foreach my $key (keys %{$ownHandles}) {
-        $kernel->state($ownHandles->{$key}, $self);    
+        $kernel->state($ownHandles->{$key}, $self);
     }
         
     # Share the session with the circuit booking backend as well

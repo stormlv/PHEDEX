@@ -3,9 +3,9 @@ package PHEDEX::File::Download::Circuits::Backend::Dummy;
 use strict;
 use warnings;
 
-use base 'PHEDEX::File::Download::Circuits::Backend::Core','PHEDEX::Core::Logging';
+use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::Logging';
 use PHEDEX::Core::Command;
-use PHEDEX::File::Download::Circuits::Backend::IDC;
+use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
 use PHEDEX::File::Download::Circuits::Circuit;
 use PHEDEX::File::Download::Circuits::Constants;
 use POE;
@@ -29,13 +29,13 @@ sub new
     my $self = $class->SUPER::new(%args);   
        
     # Load the translation file   
-    die "Cannot find translation file" unless (-e $self->{AGENT_TRANSLATION_FILE});     
+    die "Cannot find translation file" unless (-e $self->{AGENT_TRANSLATION_FILE});
     my $agents = &evalinfo($self->{AGENT_TRANSLATION_FILE});       
     die "Cannot load translation file" unless $agents;
     foreach my $node (keys %{$agents}) {
-        my $idc = PHEDEX::File::Download::Circuits::Backend::IDC->new(IP => $agents->{$node});
+        my $idc = PHEDEX::File::Download::Circuits::Backend::Core::IDC->new(IP => $agents->{$node});
         $self->{AGENT_TRANSLATION}{$node} = $idc;
-    }       
+    }
        
     bless $self, $class;
     return $self;
