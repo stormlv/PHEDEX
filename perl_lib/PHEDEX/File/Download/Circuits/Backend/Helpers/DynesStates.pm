@@ -14,11 +14,11 @@ use constant {
     # The REGEX that are used to validate a certain step
     STEP_REGEX      =>  {
         'DOWN'              => "NO REGEX NEEDED", 
-        'PATH_CALCULATION'  => "Current OSCARS/IDC status: INPATHCALCULATION", 
-        'IN_SETUP'          => "Current OSCARS/IDC status: INSETUP", 
-        'ACTIVE'            => "Current OSCARS/IDC status: ACTIVE",
+        'PATH_CALCULATION'  => "Current (OSCARS/)?IDC [s|S]tatus: INPATHCALCULATION", 
+        'IN_SETUP'          => "Current (OSCARS/)?IDC [s|S]tatus: INSETUP", 
+        'ACTIVE'            => "Current (OSCARS/)?IDC [s|S]tatus: ACTIVE",
         'ROUTE_ADDED'       => "(ip route add) ([0-9.]*)(/32 via) ([0-9.]*)", 
-        'PING'              => "(INFO: 64 bytes from )([0-9.]*)(: icmp_seq=[0-9]* ttl=64)"
+        'PING'              => "(INFO: 64 bytes from )([0-9.]*)(: icmp_seq=[0-9]* ttl=64)"   #TODO: Ping should be checked against dest IP
     },
     
     # The REGEX that are used to detect any errors
@@ -26,7 +26,7 @@ use constant {
     # it might be that the first few ping attempts fail sometimes
     ERRORS           =>     {
         'GENERIC'           => "WARNING: Circuit creation failed",
-        'PING_FAILED'       => "(INFO: From) ([0-9.]*) (icmp_seq=30 Destination Host Unreachable)",
+        'PING_FAILED'       => "INFO: From [0-9.]* icmp_seq=30 Destination Host Unreachable", #TODO: Ping should be checked against dest IP
         'REMOTE_ERROR'      => "Remote agent error",
     }
 };
@@ -65,7 +65,7 @@ sub updateState {
     my $currentStepIndex = $self->{CURRENT_STEP};
     my $nextStep = STEP_ORDER->[$currentStepIndex + 1];
     my $nextRegex = STEP_REGEX->{$nextStep};
-    my @matches = $output =~ m/$nextRegex/;
+    my @matches = $output =~ /$nextRegex/;
     
     if (@matches) {
         # If we found a match and this step is "ROUTE ADDED", 
