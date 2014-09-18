@@ -14,14 +14,14 @@ use Test::More;
 use Switch;
 
 our $linkIndex = 0;
-our $links = [['T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'], 
+our $links = [['T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'],
               ['T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'],
               ['T2_ANSE_CERN_2', 'T2_ANSE_CERN_1'],
               ['T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev'],
               ['T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_1'],
               ['T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_2']];
 
-# Timings (in seconds)    
+# Timings (in seconds)
 our $tBackendDelay = 0.03;              # Delay induced by Dummy backend between when a request was made and when it 'establishes' a circuit
 our $tCircuitLifetime = 0.03;           # Lifetime of a circuit
 our $tRequestTimeout = 0.04;            # Delay before the request times out
@@ -34,22 +34,22 @@ our ($scenarioName, $scenarioStep);
 
 # Order and timings of the events in each scenario
 our $scenarios = {
-    'normal'            => [[\&iCheckRequest, 0.01], 
-                            [\&iCheckEstablished, $tBackendDelay], 
+    'normal'            => [[\&iCheckRequest, 0.01],
+                            [\&iCheckEstablished, $tBackendDelay],
                             [\&iCheckTeardown, $tCircuitLifetime]],
 
-    'request_failure'   => [[\&iCheckRequest, 0.01], 
-                            [\&iCheckRequestFailure, $tBackendDelay], 
+    'request_failure'   => [[\&iCheckRequest, 0.01],
+                            [\&iCheckRequestFailure, $tBackendDelay],
                             [\&iCheckUnblacklist, $tUnblacklist]],
 
-    'request_timeout'   => [[\&iCheckRequest, 0.01], 
-                            [\&iCheckRequestFailure, $tRequestTimeout], 
+    'request_timeout'   => [[\&iCheckRequest, 0.01],
+                            [\&iCheckRequestFailure, $tRequestTimeout],
                             [\&iCheckUnblacklist, $tUnblacklist]],
 
-    'transfer_failure'  => [[\&iCheckRequest, 0.01], 
-                            [\&iCheckEstablished, $tBackendDelay], 
-                            [\&iFailTransfers, 0.01], 
-                            [\&iCheckTeardown, $tCircuitLifetime], 
+    'transfer_failure'  => [[\&iCheckRequest, 0.01],
+                            [\&iCheckEstablished, $tBackendDelay],
+                            [\&iFailTransfers, 0.01],
+                            [\&iCheckTeardown, $tCircuitLifetime],
                             [\&iCheckUnblacklist, $tUnblacklist]],
 };
 
@@ -58,9 +58,9 @@ sub getLink {
     my $fromNode = $links->[$linkIndex][0];
     my $toNode =  $links->[$linkIndex][1];
     my $linkName = $fromNode."-to-".$toNode;
-    
+
     $linkIndex = ++$linkIndex % @{$links};
-    
+
     return ($fromNode, $toNode, $linkName);
 }
 
@@ -102,12 +102,12 @@ sub yieldToNextStep {
     my $eventDetails = $scenarioDetails->[$scenarioStep++];
     print "Step is $scenarioStep of $scenarioSteps\n";
     POE::Kernel->delay($eventDetails->[0] => $eventDetails->[1], $circuitManager, $circuit, $linkName);
-    
+
 }
 
 sub iMainLoop {
     my ($circuitManager, $session) =  @_[ARG0, ARG1];
-    
+
     my ($fromNode, $toNode, $linkName) = getLink();
     chooseScenario($circuitManager);
 
@@ -134,7 +134,7 @@ sub iCheckRequest {
 
     # POE alarms test
     ok(defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_REQUEST}{$circuit->{ID}}, "stress test / iCheckRequest - Timer for request timeout set");
-    
+
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
 
@@ -144,14 +144,14 @@ sub iCheckEstablished {
 
     ok(defined $circuit, "stress test / iCheckEstablished - Circuit exists in circuit manager");
     is($circuit->{STATUS}, CIRCUIT_STATUS_ONLINE,"stress test / iCheckEstablished - Circuit is in established state in circuit manager");
-    
+
     my $path = $circuit->getSaveName();
     ok($path  =~ m/online/ && -e $path, "stress test / iCheckEstablished - Circuit (in established state) exists on disk as well");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
 
-# Checks that a circuit has been put in history    
+# Checks that a circuit has been put in history
 sub iCheckTeardown {
     my ($circuitManager, $circuit, $linkName) = @_[ARG0, ARG1, ARG2];
 
@@ -169,7 +169,7 @@ sub iCheckTeardown {
 sub iCheckRequestFailure {
     my ($circuitManager, $circuit, $linkName) = @_[ARG0, ARG1, ARG2];
 
-    my $path = $circuit->getSaveName(); 
+    my $path = $circuit->getSaveName();
 
     # Circuit related tests
     is($circuit->{STATUS}, CIRCUIT_STATUS_OFFLINE, "stress test / iCheckRequestFailure - Circuit is in offline state");
@@ -207,7 +207,7 @@ sub iFailTransfers {
         my $task = createTask($time, 1024**3, 30, 30);
         $circuitManager->transferFailed($circuit, $task)
     }
-    
+
     ok($circuitManager->{LINKS_BLACKLISTED}{$linkName}, "stress test / iFailTransfers - Link is now blacklisted");
     ok(defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iFailTransfers - Timer for unblacklist set");
 
@@ -222,7 +222,7 @@ sub iCheckUnblacklist {
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
-    
+
 sub iCheckHistoryTrimming {
     my ($circuitManager) = $_[ARG0];
 
@@ -236,7 +236,7 @@ sub iCheckHistoryTrimming {
     POE::Kernel->delay(\&iCheckHistoryTrimming => $tHistoryTrimming, $circuitManager);
 }
 
-my ($circuitManager, $session) = setupCircuitManager(2 * HOUR, 'creating-circuit-requests.log', undef, 
+my ($circuitManager, $session) = setupCircuitManager(10, 'creating-circuit-requests.log', undef,
                                                         [[\&iMainLoop, 0.001],
                                                          [\&iCheckRequest, undef],
                                                          [\&iCheckEstablished, undef],

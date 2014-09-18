@@ -1,5 +1,5 @@
 May 13, 2014 11:13:06 PM fdt.agent.session.AgentSession <init>
-INFO: 
+INFO:
 
 [ AgentSession ] inited with:
 
@@ -12,7 +12,7 @@ INFO:
 May 13, 2014 11:13:06 PM fdt.agent.session.SessionManager registerSession
 INFO: TODO - [ FINE ] [ SessionManager ] new session: fdt.agent.session.AgentSession@18b35dc6 registered.
 May 13, 2014 11:13:07 PM fdt.agent.session.AgentSession handleReserveIPReq
-INFO:  
+INFO:
 
  [ IPRequest ] Remote reserved IP: 10.54.32.5 Local IP: 10.51.64.5
 
@@ -39,8 +39,8 @@ fdt.agent.FDTAgentException: fdt.agent.FDTAgentException: 7006 : Remote agent er
 May 13, 2014 11:13:44 PM fdt.agent.session.AgentSession releaseLocalResources
 INFO:  IP : 10.51.64.5 returned to pool
 May 13, 2014 11:13:44 PM fdt.agent.session.AgentSession releaseLocalResources
-INFO: 
- [ releaseLocalResources ] No virtual interface defined 
+INFO:
+ [ releaseLocalResources ] No virtual interface defined
 
 
 May 13, 2014 11:13:44 PM fdt.agent.session.AgentSession releaseLocalResources

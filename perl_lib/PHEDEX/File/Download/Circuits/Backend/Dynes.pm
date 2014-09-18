@@ -20,7 +20,7 @@ use Switch;
 sub new {
     my $proto = shift;
     my $class = ref($proto) || $proto;
-    
+
     my %params = (
         TOOL                => 'dynesfdt',
         TASKER              => undef,
@@ -28,43 +28,43 @@ sub new {
         TIMEOUT             => 10,          # No reply after 10 seconds gets you killed
         ACTIVE_TASKS_BY_PID => undef,
         ACTIVE_TASKS_BY_CID => undef,
-        
+
         # Dynes options
         DEFAULT_LISTEN_PORT => undef,
         DEFAULT_BANDWIDTH   => undef,
 
-        # 
+        #
         WEB_LOOKUP          => 'http://testphedexnode1.cern.ch/agentsLookup',
         WEB_MAPPING         => 'http://testphedexnode1.cern.ch/agentsMapping',
 
         LOOKUP_REFRESH      => 60,
-        
+
         # Matchers
         MATCH_HEADER        => '\[([\w-]*)\]',
         MATCH_OPTIONS       => '([\w-]*)=([\w.]*)',
-        
-        # 
+
+        #
         SESSION             => undef,
         VERBOSE             => 1,
     );
 
     my %args = (@_);
-    
+
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
     my $self = $class->SUPER::new(%args);
-    
+
     $self->_buildAgentTranslationHash();
-    
+
     die "Could not build the agent translation hash" unless defined $self->{AGENT_TRANSLATION};
-    
+
     $self->{TASKER} = PHEDEX::File::Download::Circuits::Backend::Core::External->new();
-    
+
     bless $self, $class;
     return $self;
 }
 
 # Simple method which gets the contents from a provided URL
-# Returns an array of lines 
+# Returns an array of lines
 sub _readFromWeb {
     my ($self, $url) = @_;
     return undef if ! defined $url;
@@ -82,21 +82,21 @@ sub _getLookupViaWeb {
 # Parses the lookup list (which is retrieved by default from the WEB)
 sub _parseLookupList {
     my ($self, $content) = @_;
-    
+
     my $lookup = {};
     my $currentTag;
-    
+
     foreach my $line (@{$content}) {
         my ($matchName) = $line =~ /$self->{MATCH_HEADER}/;
         if ($matchName) {
             $currentTag = $matchName ;
             next;
         }
-        
+
         my ($matchOption, $matchValue) = $line =~ /$self->{MATCH_OPTIONS}/;
         $lookup->{$currentTag}{$matchOption} = $matchValue if ($matchOption && $matchValue);
     }
-    
+
     return $lookup;
 }
 
@@ -118,37 +118,37 @@ sub _getAgentMapping{
 #   - mapping file: this is kept up to date manually, mapping the PhEDEx names to Dynes names
 sub _buildAgentTranslationHash {
     my $self = shift;
-    
+
     my $lookup = $self->_getLookupViaWeb() if $self->{WEB_LOOKUP};
     my $phedexMapping = $self->_getAgentMapping() if $self->{WEB_MAPPING};
- 
+
     my $msg = "Dynes->_buildAgentTranslationHash";
-    
+
     if (! defined $lookup || ! defined $phedexMapping) {
         $self->Logmsg("$msg: Not all the required data has been provided");
         return;
     }
-        
-    # Set the default options   
+
+    # Set the default options
     $self->{DEFAULT_LISTEN_PORT} = $lookup->{'defaults'}{FDT_AGENT_LISTEN_PORT} if ! defined $self->{DEFAULT_LISTEN_PORT};
     $self->{DEFAULT_BANDWIDTH} = $lookup->{'defaults'}{bandwidth} if ! defined $self->{DEFAULT_BANDWIDTH};
-    
+
     delete $lookup->{'defaults'};
-    
+
     # Build IDC objects and set any eventual options (superseding default options)
     foreach my $dynesName (keys %{$lookup}) {
         next if ! defined $phedexMapping->{$dynesName};
-        
+
         my $agentOptions = $lookup->{$dynesName};
         my ($phedexName, $ip, $port, $bandwidth);
-        
-        $ip = $agentOptions->{FDT_IP} 
-            if (determineAddressType($agentOptions->{FDT_IP}) == ADDRESS_IPv4 || 
+
+        $ip = $agentOptions->{FDT_IP}
+            if (determineAddressType($agentOptions->{FDT_IP}) == ADDRESS_IPv4 ||
                 determineAddressType($agentOptions->{FDT_IP}) == ADDRESS_IPv6);
         $phedexName = $phedexMapping->{$dynesName};
         $port = defined $agentOptions->{FDT_AGENT_LISTEN_PORT} ? $agentOptions->{FDT_AGENT_LISTEN_PORT} :  $self->{DEFAULT_LISTEN_PORT};
         $bandwidth = defined $agentOptions->{FDT_AGENT_LISTEN_PORT} ? $agentOptions->{bandwidth} :  $self->{DEFAULT_BANDWIDTH};
-        
+
         if (defined $ip && defined $phedexName && defined $port && defined $bandwidth) {
             my $idc = PHEDEX::File::Download::Circuits::Backend::IDC->new(DYNES_NAME    => $dynesName,
                                                                           PHEDEX_NAME   => $phedexName,
@@ -180,57 +180,57 @@ sub _poe_init
 
 sub processToolOutput {
     my ($self, $kernel, $session, $arguments) = @_[OBJECT, KERNEL, SESSION, ARG1];
-    
+
     my $pid = $arguments->[CIRCUIT_EXTERNAL_PID];
     my $eventName = $arguments->[CIRCUIT_EXTERNAL_EVENTNAME];
     my $output = $arguments->[CIRCUIT_EXTERNAL_OUTPUT];
-    
+
     my $wrapper = $self->{ACTIVE_TASKS_BY_PID}{$pid};
-    
+
     return if ! defined $wrapper;
-    
+
     switch ($eventName) {
         case 'handleTaskStdOut' {
             $self->Logmsg("STDOUT from PID ($pid):$output") if $self->{VERBOSE};
             my $result = $wrapper->{STATE}->updateState($output);
             if ($result->[0] eq 'OK' && $result->[1] eq 'PING') {
                 $self->Logmsg("Circuit creation succeeded");
-                
+
                 my $returnValues = {
                     FROM_IP         =>      $wrapper->{STATE}->{SRC_IP},
                     TO_IP           =>      $wrapper->{STATE}->{DEST_IP},
                     BANDWIDTH       =>      $self->{DEFAULT_BANDWIDTH}, # TODO: Get the min bw between nodes
                 };
-                
+
                 POE::Kernel->post($self->{SESSION}, $wrapper->{REQUEST_REPLY}, $wrapper->{CIRCUIT}, $returnValues, CIRCUIT_REQUEST_SUCCEEDED);
             }
-            
+
             if ($result->[0] eq 'ERROR') {
                 POE::Kernel->post($self->{SESSION}, $wrapper->{REQUEST_REPLY}, $wrapper->{CIRCUIT}, undef, CIRCUIT_REQUEST_FAILED);
             }
         }
         case 'handleTaskStdError' {
-            
-            
+
+
         }
         case 'handleTaskSignal' {
-            
+
             # Clean-up
             my $wrapper = $self->{ACTIVE_TASKS_BY_PID}{$pid};
             delete $self->{ACTIVE_TASKS_BY_CID}{$wrapper->{CID}};
             delete $self->{ACTIVE_TASKS_BY_PID}{$pid};
         }
     }
-    
-    
+
+
 }
 
 sub backendRequestCircuit {
     my ($self, $kernel, $session, $circuit, $requestCallback, $infoCallback, $errorCallback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2, ARG3];
-    
+
     my $pid = $self->{TASKER}->startCommand('cat ../TestData/CircuitOK_PingOK.log', $self->{ACTION_HANDLER}, $self->{TIMEOUT});
     my $state = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
-    
+
     my $wrapper = {
         CID             =>  $circuit->{ID},         # Circuit ID
         PID             =>  $pid,                   # PID of the tool that was used to request the circuit
@@ -240,36 +240,36 @@ sub backendRequestCircuit {
         INFO_REPLY      =>  $infoCallback,          # Event to be triggered when we want to inform the CM of state changes related to an established circuit
         ERROR_REPLY     =>  $errorCallback,         # Event to be triggered when we want to inform the CM of an error (circuit died, or something)
     };
-    
+
     $self->{ACTIVE_TASKS_BY_CID}{$circuit->{ID}} = $wrapper;
     $self->{ACTIVE_TASKS_BY_PID}{$pid} = $wrapper;
 }
 
 sub backendTeardownCircuit {
     my ( $self, $kernel, $session, $circuit ) = @_[ OBJECT, KERNEL, SESSION, ARG0 ];
-    
+
     my $msg = "Dynes->backendTeardownCircuit";
-    
+
     if (! defined $circuit) {
         $self->Logmsg("$msg: Invalid circuit provided");
         return;
     }
-    
+
     if (! defined $self->{ACTIVE_TASKS_BY_CID}{$circuit->{ID}}) {
         $self->Logmsg("$msg: Cannot find and references to the circuit object provided");
         return;
     }
-    
+
     my $wrapper = $self->{ACTIVE_TASKS_BY_CID}{$circuit->{ID}};
     my $pid = $wrapper->{PID};
 
-    # Delete reference from this object as well 
+    # Delete reference from this object as well
     delete $self->{ACTIVE_TASKS_BY_CID}{$circuit->{ID}};
     delete $self->{ACTIVE_TASKS_BY_PID}{$pid};
 
     # Kill external task
     $self->{TASKER}->kill_task($pid);
-    
+
 
 }
 

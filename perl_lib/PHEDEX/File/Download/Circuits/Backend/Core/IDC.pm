@@ -8,7 +8,7 @@ sub new
 {
     my $proto = shift;
     my $class = ref($proto) || $proto;
-    
+
     my %params = (
             DYNES_NAME  =>      undef,
             PHEDEX_NAME =>      undef,
@@ -19,13 +19,13 @@ sub new
     );
 
     my %args = (@_);
-    
+
     #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
     my $self = \%args;
-     
+
     bless $self, $class;
-    
+
     return $self;
 }
 

@@ -1,5 +1,5 @@
 May 13, 2014 10:31:38 PM fdt.agent.session.AgentSession <init>
-INFO: 
+INFO:
 
 [ AgentSession ] inited with:
 
@@ -22,7 +22,7 @@ INFO: Local data network interface: p3p1 is UP.
 May 13, 2014 10:31:40 PM fdt.agent.session.AgentSession handleNewSessionResp
 INFO: Checking remote data interface and requesting remote IP address pre-allocation...
 May 13, 2014 10:31:40 PM fdt.agent.session.AgentSession handleReserveIPResp
-INFO:  
+INFO:
 
  [ IPResponse ] Remote reserved IP: 10.54.32.5 Local IP: 10.51.64.5
 
@@ -30,28 +30,28 @@ INFO:
 May 13, 2014 10:31:40 PM fdt.agent.session.CreateCircuitTask run
 INFO: [ CreateCircuitTask ] requesting circuit to IDC
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged true
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged true
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged 2true
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged 2true
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils parseTimes
 INFO: [parseTimes] duration passed endTime: 1400063500 now= 1400020300 end_time = +12:00
 May 13, 2014 10:31:40 PM fdt.agent.session.SessionUtils formRequest
-INFO: 
- [ formRequest ] 
+INFO:
+ [ formRequest ]
 
- Reservation details Layer2 
+ Reservation details Layer2
 
 
 src=urn:ogf:network:domain=caltech.edu:node=DynesOF4810:port=Te+0/0:link=*
@@ -60,7 +60,7 @@ srcVlan=any
 src tagged=true
 dstVlan=any
 dst tagged=true
- [ END form Request ] 
+ [ END form Request ]
 May 13, 2014 10:31:40 PM fdt.agent.session.CreateCircuitTask run
 INFO: Requesting circuit to OSCARS/IDC WebService interface. Reservation Parameters:
 
@@ -81,12 +81,12 @@ endTime=1400063500 (Wed May 14 10:31:40 GMT 2014)
 
 
 May 13, 2014 10:31:40 PM fdt.agent.session.CreateCircuitTask run
-INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments... 
+INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments...
 
 May 13, 2014 10:31:40 PM fdt.agent.session.CreateCircuitTask run
-INFO: 
+INFO:
 
- --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2342 <-- 
+ --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2342 <--
 
 
 May 13, 2014 10:31:40 PM fdt.agent.session.CreateCircuitTask waitForIDCCreate
@@ -106,34 +106,34 @@ INFO: Found VLANs (SRC=3168, DST=3806) for caltech.edu-2342 in 1 interations
 May 13, 2014 10:32:29 PM fdt.agent.session.CreateCircuitTask run
 WARNING: OSCARS/IDC status 'OK' to be notified to agent session
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession circuitCreationFinished
-INFO: [AgentSesion] circuit creation finished OK. Details: 
+INFO: [AgentSesion] circuit creation finished OK. Details:
 IDCCircuitDetails [resDetails=net.es.oscars.wsdlTypes.ResDetails@689d2da, createReply=null, operStatus=OK, statusDescription=Status from IDC: ACTIVE, errorCode=0]
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession circuitCreationFinished
 INFO: Will get the VLAN information from PathInfo
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession circuitCreationFinished
 INFO: [ AgentSession ] [ circuitCreationFinished ]  src vlan: 3168; remote vlan: 3806
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession commitLocalResources
-INFO: 
+INFO:
  { Virtual interface } Executed:
  /usr/bin/sudo /sbin/vconfig add p3p1 3168 Resp : WARNING:  Could not open /proc/net/vlan/config.  Maybe you need to load the 8021q module, or maybe you are not using PROCFS??
 Added VLAN with VID == 3168 to IF -:p3p1:-
 OK
 
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession commitLocalResources
-INFO: 
+INFO:
  [ commitLocalResources ] { Virtual interface IP } Executed:
  /usr/bin/sudo /sbin/ip address add 10.51.64.5/32 brd + dev p3p1.3168 Resp : OK
 
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession commitLocalResources
-INFO: 
+INFO:
  [ commitLocalResources ] { Virtual interface UP } Executed:
  /usr/bin/sudo /sbin/ifconfig p3p1.3168 up Resp : OK
 
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession commitLocalResources
-INFO: 
+INFO:
  [ commitLocalResources ] { Virtual interface ROUTE }:
  /usr/bin/sudo /sbin/ip route add 10.54.32.5/32 via 10.51.64.5 dev p3p1.3168 Resp : OK
- 
+
 
 
 May 13, 2014 10:32:29 PM fdt.agent.session.AgentSession handleCommitIPResp
@@ -166,7 +166,7 @@ May 13, 2014 10:32:40 PM ExtProccess stdout
 INFO: From 10.51.64.5 icmp_seq=10 Destination Host Unreachable
 
 May 13, 2014 10:32:42 PM ExtProccess stdout
-INFO: 
+INFO:
 
 May 13, 2014 10:32:42 PM ExtProccess stdout
 INFO: --- 10.54.32.5 ping statistics ---
@@ -178,18 +178,18 @@ May 13, 2014 10:32:42 PM ExtProccess stdout
 INFO: pipe 3
 
 May 13, 2014 10:32:42 PM fdt.agent.session.AgentSession handleCommitIPResp
-WARNING: 
+WARNING:
 
-Data plane issues - ICMP Ping failed, but session will continue ... Status: 
+Data plane issues - ICMP Ping failed, but session will continue ... Status:
 
 
 ExitStatus [id=5, extProcExitStatus=1, executorFinishStatus=ERROR, stdOut=, stdErr=]
 May 13, 2014 10:32:43 PM fdt.agent.session.AgentSession handleStartTransferResp
-INFO: [ handleStartTransferResp ] Remote end site ready ... 
+INFO: [ handleStartTransferResp ] Remote end site ready ...
 May 13, 2014 10:32:43 PM fdt.agent.session.client.PingClientSession notifyHandled
 INFO: Launching PING
 May 13, 2014 10:32:43 PM PingClientSession launchPing
-INFO:  executing ping 10.54.32.5 
+INFO:  executing ping 10.54.32.5
 May 13, 2014 10:32:46 PM ExtProccess stdout
 INFO: PING 10.54.32.5 (10.54.32.5) 56(84) bytes of data.
 
@@ -2198,7 +2198,7 @@ INFO: [ CancelCircuitTask ] Task started to cancel IDC circuit
 May 13, 2014 10:43:43 PM fdt.agent.session.CancelCircuitTask run
 INFO: [ CancelCircuitTask ] CANCEL IDC Circuit started
 May 13, 2014 10:43:43 PM fdt.agent.session.CancelCircuitTask run
-INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments... 
+INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments...
 
 May 13, 2014 10:43:45 PM fdt.agent.session.CancelCircuitTask waitForIDCTearDown
 INFO: Waiting for IDC to cancel the reservation GRI: caltech.edu-2342. Deadline in: 20 minutes for IDC to tear down the circuit.

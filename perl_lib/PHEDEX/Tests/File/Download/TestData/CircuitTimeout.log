@@ -1,5 +1,5 @@
 May 08, 2014 1:33:04 PM fdt.agent.session.AgentSession <init>
-INFO: 
+INFO:
 
 [ AgentSession ] inited with:
 
@@ -22,7 +22,7 @@ INFO: Local data network interface: p3p1 is UP.
 May 08, 2014 1:33:04 PM fdt.agent.session.AgentSession handleNewSessionResp
 INFO: Checking remote data interface and requesting remote IP address pre-allocation...
 May 08, 2014 1:33:04 PM fdt.agent.session.AgentSession handleReserveIPResp
-INFO:  
+INFO:
 
  [ IPResponse ] Remote reserved IP: 10.54.32.5 Local IP: 10.51.64.5
 
@@ -30,28 +30,28 @@ INFO:
 May 08, 2014 1:33:04 PM fdt.agent.session.CreateCircuitTask run
 INFO: [ CreateCircuitTask ] requesting circuit to IDC
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged true
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged true
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged 2true
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged 2true
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils parseTimes
 INFO: [parseTimes] duration passed endTime: 1399599184 now= 1399555984 end_time = +12:00
 May 08, 2014 1:33:04 PM fdt.agent.session.SessionUtils formRequest
-INFO: 
- [ formRequest ] 
+INFO:
+ [ formRequest ]
 
- Reservation details Layer2 
+ Reservation details Layer2
 
 
 src=urn:ogf:network:domain=caltech.edu:node=DynesOF4810:port=Te+0/0:link=*
@@ -60,7 +60,7 @@ srcVlan=any
 src tagged=true
 dstVlan=any
 dst tagged=true
- [ END form Request ] 
+ [ END form Request ]
 May 08, 2014 1:33:04 PM fdt.agent.session.CreateCircuitTask run
 INFO: Requesting circuit to OSCARS/IDC WebService interface. Reservation Parameters:
 
@@ -81,12 +81,12 @@ endTime=1399599184 (Fri May 09 01:33:04 GMT 2014)
 
 
 May 08, 2014 1:33:04 PM fdt.agent.session.CreateCircuitTask run
-INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments... 
+INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments...
 
 May 08, 2014 1:33:05 PM fdt.agent.session.CreateCircuitTask run
-INFO: 
+INFO:
 
- --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2335 <-- 
+ --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2335 <--
 
 
 May 08, 2014 1:33:05 PM fdt.agent.session.CreateCircuitTask waitForIDCCreate
@@ -285,8 +285,8 @@ fdt.agent.FDTAgentException: fdt.agent.FDTAgentException: 14001 : FAILED to crea
 May 08, 2014 1:48:14 PM fdt.agent.session.AgentSession releaseLocalResources
 INFO:  IP : 10.51.64.5 returned to pool
 May 08, 2014 1:48:14 PM fdt.agent.session.AgentSession releaseLocalResources
-INFO: 
- [ releaseLocalResources ] No virtual interface defined 
+INFO:
+ [ releaseLocalResources ] No virtual interface defined
 
 
 May 08, 2014 1:48:14 PM fdt.agent.session.AgentSession releaseLocalResources

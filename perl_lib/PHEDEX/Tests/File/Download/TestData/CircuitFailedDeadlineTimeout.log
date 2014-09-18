@@ -1,5 +1,5 @@
 Aug 04, 2013 8:30:16 PM fdt.agent.session.AgentSession <init>
-INFO: 
+INFO:
 
 [ AgentSession ] inited with:
 
@@ -22,7 +22,7 @@ INFO: Local data network interface: p2p1 is UP.
 Aug 04, 2013 8:30:16 PM fdt.agent.session.AgentSession handleNewSessionResp
 INFO: Checking remote data interface and requesting remote IP address pre-allocation...
 Aug 04, 2013 8:30:17 PM fdt.agent.session.AgentSession handleReserveIPResp
-INFO:  
+INFO:
 
  [ IPResponse ] Remote reserved IP: 10.53.224.5 Local IP: 10.51.64.5
 
@@ -30,28 +30,28 @@ INFO:
 Aug 04, 2013 8:30:17 PM fdt.agent.session.CreateCircuitTask run
 INFO: [ CreateCircuitTask ] requesting circuit to IDC
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged true
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged true
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  srctagged 2true
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils configure
-INFO: 
+INFO:
 
  CreateRequestParams  dsttagged 2true
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils parseTimes
 INFO: [parseTimes] duration passed endTime: 1375691417 now= 1375648217 end_time = +12:00
 Aug 04, 2013 8:30:17 PM fdt.agent.session.SessionUtils formRequest
-INFO: 
- [ formRequest ] 
+INFO:
+ [ formRequest ]
 
- Reservation details Layer2 
+ Reservation details Layer2
 
 
 src=urn:ogf:network:domain=caltech.edu:node=DynesOF4810:port=Te+0/0:link=*
@@ -60,7 +60,7 @@ srcVlan=any
 src tagged=true
 dstVlan=any
 dst tagged=true
- [ END form Request ] 
+ [ END form Request ]
 Aug 04, 2013 8:30:17 PM fdt.agent.session.CreateCircuitTask run
 INFO: Requesting circuit to OSCARS/IDC WebService interface. Reservation Parameters:
 
@@ -81,12 +81,12 @@ endTime=1375691417 (Mon Aug 05 08:30:17 GMT 2013)
 
 
 Aug 04, 2013 8:30:17 PM fdt.agent.session.CreateCircuitTask run
-INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments... 
+INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments...
 
 Aug 04, 2013 8:30:17 PM fdt.agent.session.CreateCircuitTask run
-INFO: 
+INFO:
 
- --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2108 <-- 
+ --> OSCARS/IDC Global Reservation ID (GRI): caltech.edu-2108 <--
 
 
 Aug 04, 2013 8:30:17 PM fdt.agent.session.CreateCircuitTask waitForIDCCreate
@@ -104,20 +104,20 @@ INFO: Network circuit creation for reservation caltech.edu-2108 SUCCEEDED! -- Cu
 Aug 04, 2013 8:31:10 PM fdt.agent.session.CreateCircuitTask run
 WARNING: OSCARS/IDC status 'OK' to be notified to agent session
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession circuitCreationFinished
-INFO: [AgentSesion] circuit creation finished OK. Details: 
+INFO: [AgentSesion] circuit creation finished OK. Details:
 IDCCircuitDetails [resDetails=net.es.oscars.wsdlTypes.ResDetails@7abbad42, createReply=null, operStatus=OK, statusDescription=Status from IDC: ACTIVE, errorCode=0]
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession circuitCreationFinished
 INFO: Will get the VLAN information from Layer2Info
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession circuitCreationFinished
 WARNING: Null source VlanTag returned from the OSCARS/IDC API call.
-Full reservation details: ResDetails: 
+Full reservation details: ResDetails:
  GRI=caltech.edu-2108
  Login=fdt-caltech
  Status=ACTIVE
  bandwidth=100
  CreateTime=1375648249 (Sun Aug 04 20:30:49 GMT 2013 )
  EndTime=1375691417 (Mon Aug 05 08:30:17 GMT 2013 )
- PathInfo [ 
+ PathInfo [
  Layer2Info [
 srcEndPoint=urn:ogf:network:domain=caltech.edu:node=DynesOF4810:port=Te+0/0:link=*
  srcVtag=null
@@ -126,10 +126,10 @@ srcEndPoint=urn:ogf:network:domain=caltech.edu:node=DynesOF4810:port=Te+0/0:link
  destVTtag=737
 ]
  Layer3Info [ null ]
- MplsInfo [ null ] 
+ MplsInfo [ null ]
 
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession circuitCreationFinished
-WARNING: Circuit creation failed. Shutting down the session. Cause: 
+WARNING: Circuit creation failed. Shutting down the session. Cause:
 fdt.agent.session.OSCARSReservationException: fdt.agent.FDTAgentException: 13001 : Invalid OSCARS/IDC response : Null source VlanTag returned from the OSCARS/IDC API call
 	at fdt.agent.session.AgentSession.circuitCreationFinished(AgentSession.java:904)
 	at fdt.agent.session.CreateCircuitTask.run(CreateCircuitTask.java:457)
@@ -162,8 +162,8 @@ Caused by: fdt.agent.session.OSCARSReservationException: fdt.agent.FDTAgentExcep
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession releaseLocalResources
 INFO:  IP : 10.51.64.5 returned to pool
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession releaseLocalResources
-INFO: 
- [ releaseLocalResources ] No virtual interface defined 
+INFO:
+ [ releaseLocalResources ] No virtual interface defined
 
 
 Aug 04, 2013 8:31:10 PM fdt.agent.session.AgentSession releaseLocalResources
@@ -175,7 +175,7 @@ WARNING: [ CancelCircuitTask ] [Grace period - TIMING WORKAROUND FOR OSCARS/IDC]
 Aug 04, 2013 8:32:10 PM fdt.agent.session.CancelCircuitTask run
 INFO: [ CancelCircuitTask ] CANCEL IDC Circuit started
 Aug 04, 2013 8:32:10 PM fdt.agent.session.CancelCircuitTask run
-INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments... 
+INFO: The WebService request to OSCARS/IDC @ https://idc-v6.hep.caltech.edu:9001/OSCARS05 may take a few moments...
 
 Aug 04, 2013 8:32:13 PM fdt.agent.session.CancelCircuitTask waitForIDCTearDown
 INFO: Waiting for IDC to cancel the reservation GRI: caltech.edu-2108. Deadline in: 20 minutes for IDC to tear down the circuit.

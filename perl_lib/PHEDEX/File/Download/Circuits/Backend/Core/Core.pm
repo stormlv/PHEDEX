@@ -8,7 +8,7 @@ use POE;
 use List::Util qw(min);
 
 my %params =
-	(      
+	(
         AGENT_TRANSLATION           =>  {},         # Stores the PhEDEx names to IDC ref
 	);
 		
@@ -16,12 +16,12 @@ sub new
 {
     my $proto = shift;
     my $class = ref($proto) || $proto;
-   
+
     my %args = (@_);
     #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);   
-   
+    my $self = $class->SUPER::new(%args);
+
     bless $self, $class;
     return $self;
 }
@@ -33,7 +33,7 @@ sub _poe_init
 
   # Declare events which are going to be used by the CircuitManager
   my @poe_subs = qw(backendRequestCircuit backendTeardownCircuit);
-                      
+
   $kernel->state($_, $self) foreach @poe_subs;
 }
 
@@ -52,7 +52,7 @@ sub checkLinkSupport {
 
 # Returns the advertised bandwidth that can be had between the two provided nodes
 sub getCircuitBandwidth {
-    my ($self, $from_node, $to_node) = @_;    
+    my ($self, $from_node, $to_node) = @_;
     return undef unless $self->checkLinkSupport($from_node, $to_node);
     return min $self->{AGENT_TRANSLATION}{$from_node}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$to_node}{BANDWIDTH};
 }

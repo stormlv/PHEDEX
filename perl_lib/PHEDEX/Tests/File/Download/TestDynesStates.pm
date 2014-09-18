@@ -22,39 +22,39 @@ our ($allStates, $pid1, $pid2, $pid3, $pid4, $pid5);
 
 sub _start {
     my ($kernel, $session) = @_[KERNEL, SESSION];
-    
+
     # Create the object which will launch all the tasks
     my $tasker = PHEDEX::File::Download::Circuits::Backend::Helpers::External->new();
     # Create the action which is going to be called on STDOUT by External
     my $postback = $session->postback('handleAction');
-    
+
     # Start commands and assign a DynesState object to each task
     $pid1 = $tasker->startCommand('cat TestData/AgentError.log', $postback, 2);
     $allStates->{$pid1} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
-    
+
     $pid2 = $tasker->startCommand('cat TestData/CircuitFailedDeadlineTimeout.log', $postback, 2);
     $allStates->{$pid2} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
-    
+
     $pid3 = $tasker->startCommand('cat TestData/CircuitOK_PingErrorFirstTime.log', $postback, 2);
     $allStates->{$pid3} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
-    
+
     $pid4 = $tasker->startCommand('cat TestData/CircuitOK_PingOK.log', $postback, 2);
     $allStates->{$pid4} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
-    
+
     $pid5 = $tasker->startCommand('cat TestData/CircuitTimeout.log', $postback, 2);
     $allStates->{$pid5} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 }
 
 sub handleAction {
     my ($kernel, $session, $arguments) = @_[KERNEL, SESSION, ARG1];
-    
+
     my $pid = $arguments->[CIRCUIT_EXTERNAL_PID];
     my $eventName = $arguments->[CIRCUIT_EXTERNAL_EVENTNAME];
     my $output = $arguments->[CIRCUIT_EXTERNAL_OUTPUT];
-    
+
     my $stateOubject = $allStates->{$pid};
     my $returns = $stateOubject->updateState($output);
-    
+
     if ($returns) {
         print "$returns->[0] - $returns->[1]\n";
     }

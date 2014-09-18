@@ -215,7 +215,7 @@ eval
        {
 	   # Truncate transfer logs longer than 100k characters,
 	   # reporting only the initial and final part of the log
-	   
+	
 	   my $xferlog = $$tasks{$task}{LOG_XFER};
 	   if (length($xferlog) > 100_000) {
 	       substr($xferlog,49_950,length($xferlog)-2*49_950)="\n[omitted ".(length($xferlog)-2*49_950)." characters from transfer log]\n";
@@ -394,7 +394,7 @@ eval
 	       %iargs = ();
 	   }
     }
-   
+
    if (%iargs)
    {
        &dbbindexec($i, %iargs);
@@ -403,7 +403,7 @@ eval
            $self->Logmsg("set status to inxfer for task=$t") if $$self{VERBOSE};
        }
    }
-   
+
     # report error summary
     foreach my $err (keys %errors) {
 	$self->Alert ("'$err' occurred for $errors{$err} tasks" );
@@ -694,7 +694,7 @@ sub fill_backend
 	# If we have nothing to do because all the links have too many
 	# errors, then check if there were any recent transfers on
 	# good links, and sync faster if there was
-	if ($errlinks == $nlinks && $goodlinks 
+	if ($errlinks == $nlinks && $goodlinks
 	    && $self->next_event_time('sync_tasks') - $now > 300) {
 	    $self->delay_max($kernel, 'sync_tasks', 300);
 	    $self->Logmsg("all links were skipped due to errors, scheduling ",
@@ -905,7 +905,7 @@ sub transfer_task
 sub transfer_done
 {
     my ( $self, $kernel, $taskid, $xferinfo ) = @_[ OBJECT, KERNEL, ARG0, ARG1 ];
-    
+
     my $task = $self->getTask($taskid) || $self->forgetTask($taskid) && return;
 
     # copy results into the task
@@ -957,8 +957,8 @@ sub postvalidate_done
     # We move the "converted" validation status codes to be less than
     # -255 to distinguish them from PhEDEx-generated errors, which are
     # in the [-255,-1] range.
-    my $reportcode = ((defined $$task{XFER_CODE} && $$task{XFER_CODE} >= 0) 
-		      || $statcode <= 0) ? $statcode 
+    my $reportcode = ((defined $$task{XFER_CODE} && $$task{XFER_CODE} >= 0)
+		      || $statcode <= 0) ? $statcode
 		                         : -255 - $statcode;
 
     # Set task parameters
@@ -1270,7 +1270,7 @@ sub statsNewPeriod
     }
 }
 
-# Check if a task is expired.  If it is expired, set 
+# Check if a task is expired.  If it is expired, set
 sub check_task_expire
 {
     my ( $self, $taskid ) = @_;
@@ -1279,7 +1279,7 @@ sub check_task_expire
     my $now = &mytimeofday();
 
     # Do not expire tasks which have started or have finished
-    return 0 if $$task{STARTED} || $$task{FINISHED}; 
+    return 0 if $$task{STARTED} || $$task{FINISHED};
 
     # If it has already expired, just remove it.
     my $prettyhours = sprintf "%0.1fh ", ($now - $$task{TIME_ASSIGN})/3600;
@@ -1302,7 +1302,7 @@ sub check_task_expire
 	$$task{STARTED}      = -1;  # prevent this task from being started
 	return 1;
     }
-    
+
     # OK, it's not expired
     return 0;
 }
