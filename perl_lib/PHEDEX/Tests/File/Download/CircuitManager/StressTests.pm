@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::StressTestCircuitManager;
+package PHEDEX::Tests::File::Download::StressTests;
 
 use strict;
 use warnings;

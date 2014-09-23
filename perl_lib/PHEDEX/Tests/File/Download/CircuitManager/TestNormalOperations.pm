@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::TestCircuitManager;
+package PHEDEX::Tests::File::Download::TestNormalOperations;
 
 use strict;
 use warnings;
@@ -571,6 +571,7 @@ sub testTransferFailure {
     ok($circuitManager->{LINKS_BLACKLISTED}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'}, "circuit manager / testTransferFailure - circuit 2 was blacklisted");
 }
 
+# This test consists of creating many circuits in order to determine how the CircuitManager handles the workload
 sub testMaxCircuitCount {
 
     our $allMyCircuits = 1000;
