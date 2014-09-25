@@ -30,8 +30,6 @@ sub new {
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
     my $self = $class->SUPER::new(%args);
 
-
-
     bless $self, $class;
     return $self;
 }
@@ -67,6 +65,7 @@ sub unspawn {
         return;
     }
 
+    $self->Logmsg("$msg: Unspawning client");
     $poe_kernel->post($self->{USER_AGENT_ALIAS}, "shutdown");
     $self->{SPAWNED} = 0;
 }
@@ -146,7 +145,8 @@ sub httpRequest {
                     case 'JSON' {
                         $request = HTTP::Request->new(POST => $url);
                         $request->header('content-type' => 'application/json');
-                        $request->content(encode_json($content));
+                        my $jsonObject = JSON::XS->new->convert_blessed->encode($content);
+                        $request->content($jsonObject);
                     }
                     case 'TEXT' {
                         $request = HTTP::Request->new(POST => $url);

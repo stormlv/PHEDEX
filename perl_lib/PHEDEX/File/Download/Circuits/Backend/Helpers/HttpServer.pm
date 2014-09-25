@@ -118,6 +118,7 @@ sub stopServer {
         return HTTP_SERVER_NOT_STARTED;
     }
 
+    $self->Logmsg("HttpServer->stop: Shutting down HTTP Server");
     POE::Kernel->post($self->{SERVER_SESSION_ID}, 'shutdown');
     delete $self->{SERVER_SESSION_ID};
 }
@@ -270,7 +271,7 @@ sub removeHandler {
 # Removes *all* the handlers which were defined until now
 sub resetHandlers {
     my $self = shift;
-    $self->Logmsg("HttpServer->resetHandlers : removing all handles for this http server!");
+    $self->Logmsg("HttpServer->resetHandlers: removing all handles for this http server!");
     delete $self->{ACTIONS};
 }
 
@@ -287,8 +288,9 @@ sub returnData {
         sendHttpReply->($kernel, $heap, HTTP_INTERNAL_SERVER_ERROR, "text/html", "Cannot provide the content requested. Request was forwarded to a handler, but no object was received in return");
         return;
     }
+    
 
-    my $jsonObject = encode_json($replyObject);
+    my $jsonObject = JSON::XS->new->convert_blessed->encode($replyObject);
     sendHttpReply->($kernel, $heap, HTTP_OK, "application/json", $jsonObject);
 }
 
