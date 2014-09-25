@@ -446,4 +446,8 @@ sub formattedTime{
     return strftime('%Y%m%d-%Hh%Mm%S', gmtime(int($time))).$milis;
 }
 
+sub TO_JSON {
+    return { %{ shift() } };
+}
+
 1;

@@ -7,6 +7,7 @@ use base 'PHEDEX::Core::Logging', 'Exporter';
 use List::Util qw(min);
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
+use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer;
 use PHEDEX::File::Download::Circuits::Circuit;
 use PHEDEX::File::Download::Circuits::Constants;
 use POE;
@@ -62,9 +63,22 @@ sub new {
             SESSION_ID                      => undef,
             DELAYS                          => undef,
 
+            # Allows the Circuit Manager to be controlled directly via HTTP
+            HTTP_CONTROL                    => 0,           # Enable (or not) control of the CircuitManager via web
+            HTTP_HOSTNAME                   => 'localhost',
+            HTTP_PORT                       => 8080,
+            
+            HTTP_SERVER                     => undef,
+            HTTP_HANDLE_DETAILS             => [
+                                                { HANDLER => 'handleHTTPcreation', URI => '/createCircuit', METHOD => "POST"},
+                                                { HANDLER => 'handleHTTPteardown', URI => '/removeCircuit', METHOD => "POST"},
+                                                { HANDLER => 'handleHTTPinfo', URI => '/getInfo', METHOD => "GET"},
+                                               ],
+
+            # Other parameters
             VERBOSE                         => 0,
-		);
-		
+        );
+
     my %args = (@_);
     #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
     map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
@@ -77,6 +91,11 @@ sub new {
     do { chomp ($@); die "Failed to load backend: $@\n" } if $@;
     $self->{BACKEND} = eval("new PHEDEX::File::Download::Circuits::Backend::$backend(%backendArgs)");
     do { chomp ($@); die "Failed to create backend: $@\n" } if $@;
+
+    if ($self->{HTTP_CONTROL}) {
+        $self->{HTTP_SERVER} = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer->new();
+        $self->{HTTP_SERVER}->startServer($self->{HTTP_HOSTNAME}, $self->{HTTP_PORT});
+    }
 
     bless $self, $class;
     return $self;
@@ -108,6 +127,14 @@ sub _poe_init
 
     # Get the periodic events going
     $kernel->yield($ownHandles->{VERIFY_STATE}) if (defined $self->{PERIOD_CONSISTENCY_CHECK});
+
+    # Add the handlers which we want to process
+    if (defined $self->{HTTP_SERVER}) {
+        foreach my $situation (@{$self->{HTTP_HANDLE_DETAILS}}) {
+            $kernel->state($situation->{HANDLER}, $self);
+            $self->{HTTP_SERVER}->addHandler($situation->{METHOD}, $situation->{URI}, $session->postback($situation->{HANDLER}, $self));
+        }
+    }
 }
 
 # Method used to check if a circuit is either in request or online
@@ -633,6 +660,85 @@ sub handleCircuitTeardown {
 
     # Call backend to take down this circuit
     $kernel->post($session, $backHandles->{BACKEND_TEARDOWN}, $circuit);
+}
+
+## HTTP Related controls
+
+sub handleHTTPcreation {
+    my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
+
+    my ($circuitManager) = @{$initialArgs};
+    my ($resultArguments) = @{$postArgs};
+    
+    my $fromNode = $resultArguments->{FROM_NODE};
+    my $toNode = $resultArguments->{TO_NODE};
+    my $lifetime = $resultArguments->{LIFETIME};
+    my $bandwidth = $resultArguments->{BANDWIDTH};
+    
+    $circuitManager->Logmsg("Received circuit creation request for nodes $fromNode and $toNode");
+    
+    $poe_kernel->post($session, 'requestCircuit', $fromNode, $toNode, $lifetime, $bandwidth);
+}
+
+sub handleHTTPteardown {
+    my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
+
+    my ($circuitManager) = @{$initialArgs};
+    my ($resultArguments) = @{$postArgs};
+    
+    my $fromNode = $resultArguments->{FROM_NODE};
+    my $toNode = $resultArguments->{TO_NODE};
+    
+    my $linkID = &getLink($fromNode, $toNode);
+    
+    my $circuit = $circuitManager->{CIRCUITS}{$linkID};
+    
+    $circuitManager->Logmsg("Received circuit teardown request for circuit on nodes $fromNode and $toNode");
+    
+    $circuitManager->handleCircuitTeardown($kernel, $session, $circuit);
+}
+
+
+sub handleHTTPinfo {
+    my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
+
+    my ($circuitManager) = @{$initialArgs};
+    my ($resultArguments, $resultCallback) = @{$postArgs};
+
+    my $request = $resultArguments->{REQUEST};
+
+    return if ! defined $request;
+
+    switch($request) {
+        case /^(CIRCUITS|BACKEND_TYPE|CIRCUITS_HISTORY|LINKS_BLACKLISTED)$/ {
+            $resultCallback->($circuitManager->{$request});
+        }
+        case 'ONLINE_CIRCUIT' {
+            my $fromNode = $resultArguments->{FROM_NODE};
+            my $toNode = $resultArguments->{TO_NODE};
+            my $linkID = &getLink($fromNode, $toNode);
+            $resultCallback->() if !$linkID;
+
+            my $circuit = $circuitManager->{CIRCUITS}{$linkID};
+            $resultCallback->($circuit);
+        }
+        else {
+            $resultCallback->();
+        }
+    }
+}
+
+sub stop {
+    my $self = shift;
+
+    # Tear down all circuits before shutting down
+    $self->teardownAll();
+
+    # Stop the HTTP server
+    if (defined $self->{HTTP_SERVER}) {
+        $self->{HTTP_SERVER}->stopServer();
+        $self->{HTTP_SERVER}->resetHandlers();
+    }
 }
 
 # Cancels all requests in progress and tears down all the circuits that have been established
