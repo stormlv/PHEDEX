@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::StressTests;
+package PHEDEX::Tests::File::Download::StressTestProlongedOperation;
 
 use strict;
 use warnings;
