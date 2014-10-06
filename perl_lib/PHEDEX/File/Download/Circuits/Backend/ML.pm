@@ -21,17 +21,17 @@ sub new {
 
     my %params = (
         HTTP_CLIENT         =>  undef,
-        
-        ML_ADDRESS          => "http://pccit16.cern.ch:8080/phedex",
-        ML_REQUEST          => "/",
-        ML_STATUS_POLL      => "/",
-        ML_TEARDOWN         => "/", 
 
-        ML_LOOP_DELAY       => 5,
-        
-        EXCHANGE_MESSAGES   =>  "JSON",
-        
-        DELAYS              => undef,
+        ML_ADDRESS          => "http://pccit16.cern.ch:8080/phedex",        # Default address for the ML server
+        ML_REQUEST          => "/",                                         # URI used to request a circuit
+        ML_STATUS_POLL      => "/",                                         # URI used to check the status of a given circuit
+        ML_TEARDOWN         => "/",                                         # URI used to request a teardown
+
+        ML_LOOP_DELAY       => 5,                                           # Polling interval to see if we got the circuit or not
+
+        EXCHANGE_MESSAGES   =>  "JSON",                                     # Type of messages we want to exchange
+
+        DELAYS              => undef,                                       # Hash keeping track of all the polls that we have to do 
     );
 
     my %args = (@_);
@@ -71,21 +71,27 @@ sub backendRequestCircuit {
     
     # Setup the object sent to ML
     my $requestObject = {
-        ID      =>  $circuit->{ID},
-        FROM    =>  $circuit->{PHEDEX_TO_NODE},
-        TO      =>  $circuit->{PHEDEX_FROM_NODE},
-        OPTIONS => {
-            BANDWIDTH   => $circuit->{BANDWIDTH_REQUESTED},
-            LIFETIME    => $circuit->{LIFETIME}
-        },
+        REQUEST_TYPE    => 'CREATE',                        # Needed in case the URI for creation and teardown are the same
+        ID              =>  $circuit->{ID},                 # ID of the circuit which we want to establish
+        FROM            =>  $circuit->{PHEDEX_TO_NODE}, 
+        TO              =>  $circuit->{PHEDEX_FROM_NODE},
+        OPTIONS         => {
+                            BANDWIDTH   => $circuit->{BANDWIDTH_REQUESTED},
+                            LIFETIME    => $circuit->{LIFETIME}
+                           },
     };
 
-    # Make the actuall POST request
+    # Create a (POE) post back to this session
+    # $self and $circuit are provided as arguments, as well as $requestCallback.
+    # Since we're working in the same session as the CircuitManager, $requestCallback only has the event name and is not a real postback
+    my $postback = $session->postback("handleRequestReply", $self, $circuit, $requestCallback);
+    
+    # Make the actual POST request
     $self->{HTTP_CLIENT}->httpRequest(
-                "POST",                                                                         # Method used 
-                $self->{ML_ADDRESS}.$self->{ML_REQUEST},                                        # Address and method URI
-                [$self->{EXCHANGE_MESSAGES}, $requestObject],                                   # Type of messages which are exchanged; object that is sent 
-                $session->postback("handleRequestReply", $self, $circuit, $requestCallback));   # Create a postback to this session
+                "POST",                                         # Method used 
+                $self->{ML_ADDRESS}.$self->{ML_REQUEST},        # Address and method URI
+                [$self->{EXCHANGE_MESSAGES}, $requestObject],   # Type of messages which are exchanged; object that is sent 
+                $postback);                                     # We need to provide a postback in order to get the reply
 }
 
 # Handler for the initial request (post) reply
@@ -94,21 +100,22 @@ sub handleRequestReply {
     my ($self, $circuit, $requestCallback) = @{$initialArgs};
     my ($resultObject, $resultCode, $resultRequest) = @{$postArgs};
 
-    # First check if the request succeeded or not
+    # First check if the (http) post succeeded or not
     if ($resultCode != HTTP_OK) {
-        $self->Logmsg("There has been an error in getting the circuit");
+        $self->Logmsg("There has been an error in requesting the circuit");
+        # Propagate the error back to the circuit manager
         $kernel->post($session, $requestCallback, $circuit, undef, CIRCUIT_REQUEST_FAILED);
         return;
     }
 
     # If we get to here it means that ML accepted our request
-    
-    # We need to start a loop to poll and see if the circuit was accepted
+    # We need to start a loop to poll and see if the circuit request was accepted
     my $delayID = $kernel->delay_set("requestStatusPoll", $self->{ML_LOOP_DELAY}, $circuit, $requestCallback);
     $self->{DELAYS}{$circuit->{ID}} = $delayID;
 }
 
-
+# This event will get triggered periodically (given by ML_LOOP_DELAY)
+# and it will check to see if a circuit request has succeeded or not 
 sub requestStatusPoll {
     my ($self, $kernel, $session, $circuit, $requestCallback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
 
@@ -117,11 +124,15 @@ sub requestStatusPoll {
         ID      => $circuit->{ID}
     };
 
+    # Create a (POE) post back to this session
+    # Based on this reply, we'll know if the request is still in progress or has failed
+    my $postback = $pollRequest, $session->postback("handlePollReply", $self, $circuit, $requestCallback);
+    
     # Check the status
     $self->{HTTP_CLIENT}->httpRequest(
-            "GET", 
-            $self->{ML_ADDRESS}.$self->{ML_STATUS_POLL},
-            $pollRequest, $session->postback("handlePollReply", $self, $circuit, $requestCallback));
+            "GET",                                          # Method used (GET in this case)
+            $self->{ML_ADDRESS}.$self->{ML_STATUS_POLL},    # Address and method URI
+            $postback);                                     # We need to provide a postback in order to get the reply
 }
 
 # Handler for the poll (get) reply
@@ -129,16 +140,19 @@ sub handlePollReply {
     my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
     my ($self, $circuit, $requestCallback) = @{$initialArgs};
     my ($resultObject, $resultCode, $resultRequest) = @{$postArgs};
-    
-        # First check if the poll succeeded or not
+
+    # First check if the (http) get succeeded or not
     if ($resultCode != HTTP_OK || ! defined $resultObject || ! defined $resultObject->{STATUS}) {
-        $self->Logmsg("There has been an error in getting the circuit");
+        $self->Logmsg("There has been an error in requesting the circuit");
+        # Propagate the error back to the circuit manager
         $kernel->post($session, $requestCallback, $circuit, undef, CIRCUIT_REQUEST_FAILED);
         return;
     }
 
+    # Get the delay ID (alarm id) which was previously started
     my $delayID = $self->{DELAYS}{$circuit->{ID}};
 
+    # Case based on the status that we got from the (ML) server
     my $status = $resultObject->{STATUS};
     switch($status) {
         case "REQUESTING" {
@@ -146,50 +160,63 @@ sub handlePollReply {
             $kernel->delay_adjust($delayID, $self->{ML_LOOP_DELAY}, $circuit, $requestCallback);
         }
         case "ESTABLISHED" {
+            # Process the return values in a format that the CircuitManager will like
             my $returnValues = {
-                FROM_IP     =>  $resultObject->{TO_IP},
+                FROM_IP     =>  $resultObject->{FROM_IP},
                 TO_IP       =>  $resultObject->{TO_IP},
                 BANDWIDTH   =>  $resultObject->{BANDWIDTH},
             };
-            
+
+            # Inform the CircuitManager that the request was successful
             $kernel->post($session, $requestCallback, $circuit, $returnValues, CIRCUIT_REQUEST_SUCCEEDED);
             
-            # Remove from CircuitManager and remove from POE
+            # Remove timer from this backend and from the POE
             delete $self->{DELAYS}{$circuit->{ID}};
             $kernel->alarm_remove($delayID);
         }
         case "FAILED" {
+            # The request has failed... There isn't much to do, except inform the CircuitManager
             $kernel->post($session, $requestCallback, $circuit, undef, CIRCUIT_REQUEST_FAILED);
             
-            # Remove from CircuitManager and remove from POE
+            # Remove timer from this backend and from the POE
             delete $self->{DELAYS}{$circuit->{ID}};
             $kernel->alarm_remove($delayID);
         }
+        # TODO: More status messages:
+        #   DENIED_TOO_GREEDY: Informs the CM that the request has been denied (and gives a reason why: we requested a BW that's too large or life that's too long)
+        #           CM can re-adjust and remake the request
+        #   DENIED_MAX_CAPACITY: Informs the CM that the circuit backend cannot allocate another circuit. It also provides the time for the next available slot. CM can blacklist the path until then
+        # etc...
     }
 }
 
+# Request the teardown of a particular circuit...
 sub backendTeardownCircuit {
     my ( $self, $kernel, $session, $circuit ) = @_[ OBJECT, KERNEL, SESSION, ARG0 ];
 
     # Setup the object sent to ML
     my $requestObject = {
-        ID      =>  $circuit->{ID},
+        REQUEST_TYPE    => 'TEARDOWN',
+        ID              =>  $circuit->{ID},
     };
+
+    my $postback = $session->postback("handleTeardownReply", $self, $circuit);
 
     # Make the actuall POST request
     $self->{HTTP_CLIENT}->httpRequest(
-                "POST",                                                                         # Method used 
-                $self->{ML_ADDRESS}.$self->{ML_TEARDOWN},                                       # Address and method URI
-                [$self->{EXCHANGE_MESSAGES}, $requestObject],                                   # Type of messages which are exchanged; object that is sent 
-                $session->postback("handleTeardownReply", $self, $circuit));   # Create a postback to this session
+                "POST",                                             # Method used 
+                $self->{ML_ADDRESS}.$self->{ML_TEARDOWN},           # Address and method URI
+                [$self->{EXCHANGE_MESSAGES}, $requestObject],       # Type of messages which are exchanged; object that is sent
+                $postback);                                         # We need to provide a postback in order to get the reply
 }
 
+# Handler for the teardown reply
 sub handleTeardownReply {
     my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
     my ($self, $circuit) = @{$initialArgs};
     my ($resultObject, $resultCode, $resultRequest) = @{$postArgs};
 
-    # First check if the request succeeded or not
+    # First check if the (http) post succeeded or not
     if ($resultCode != HTTP_OK) {
         $self->Logmsg("There has been an error in tearing down the circuit");
         # Umm, c$$p? 
