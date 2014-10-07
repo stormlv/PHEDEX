@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::TestDynesStates;
+package PHEDEX::Tests::File::Download::CircuitBackends::TestDynesStates;
 
 use strict;
 use warnings;
@@ -29,19 +29,19 @@ sub _start {
     my $postback = $session->postback('handleAction');
 
     # Start commands and assign a DynesState object to each task
-    $pid1 = $tasker->startCommand('cat TestData/AgentError.log', $postback, 2);
+    $pid1 = $tasker->startCommand('cat ../TestData/AgentError.log', $postback, 2);
     $allStates->{$pid1} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 
-    $pid2 = $tasker->startCommand('cat TestData/CircuitFailedDeadlineTimeout.log', $postback, 2);
+    $pid2 = $tasker->startCommand('cat ../TestData/CircuitFailedDeadlineTimeout.log', $postback, 2);
     $allStates->{$pid2} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 
-    $pid3 = $tasker->startCommand('cat TestData/CircuitOK_PingErrorFirstTime.log', $postback, 2);
+    $pid3 = $tasker->startCommand('cat ../TestData/CircuitOK_PingErrorFirstTime.log', $postback, 2);
     $allStates->{$pid3} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 
-    $pid4 = $tasker->startCommand('cat TestData/CircuitOK_PingOK.log', $postback, 2);
+    $pid4 = $tasker->startCommand('cat ../TestData/CircuitOK_PingOK.log', $postback, 2);
     $allStates->{$pid4} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 
-    $pid5 = $tasker->startCommand('cat TestData/CircuitTimeout.log', $postback, 2);
+    $pid5 = $tasker->startCommand('cat ../TestData/CircuitTimeout.log', $postback, 2);
     $allStates->{$pid5} = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
 }
 
