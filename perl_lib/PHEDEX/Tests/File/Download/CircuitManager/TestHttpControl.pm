@@ -10,8 +10,9 @@ use POSIX;
 use Test::More;
 
 use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
-use PHEDEX::File::Download::Circuits::Circuit;
-use PHEDEX::File::Download::Circuits::CircuitManager;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use PHEDEX::File::Download::Circuits::ResourceManager;
 use PHEDEX::File::Download::Circuits::Constants;
 use PHEDEX::Tests::File::Download::Helpers::ObjectCreation;
 use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
@@ -31,8 +32,8 @@ sub testHttpCircuitLifecycle {
         my ($kernel, $session, $circuitManager) = @_[KERNEL, SESSION, ARG0];
 
         my $request = {
-            FROM_NODE   => "T2_ANSE_CERN_1",
-            TO_NODE     => "T2_ANSE_CERN_2",
+            NODE_A   => "T2_ANSE_CERN_1",
+            NODE_B     => "T2_ANSE_CERN_2",
         };
 
         $kernel->state(iTestPostback => \&iTestPostback);
@@ -52,20 +53,19 @@ sub testHttpCircuitLifecycle {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-        is($circuit->{STATUS}, CIRCUIT_STATUS_REQUESTING, "circuit manager / requestCircuit - circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "circuit manager / requestCircuit - circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $time = $circuit->{REQUEST_TIME};
-        my $fileReq = $baseLocation."/data/requested/$linkName-$partialID-".formattedTime($time);
+        my $fileReq = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($time);
 
         ok(-e $fileReq, "circuit manager / requestCircuit - circuit has been requested");
 
-        my ($openedCircuit, $returnCode) = &openCircuit($fileReq);
-        is($returnCode, CIRCUIT_OK, "circuit manager / requestCircuit - was able to open saved state for circuit");
+        my $openedCircuit = &openState($fileReq);
         ok($openedCircuit, "circuit manager / requestCircuit - was able to open saved state for circuit");
 
-        is($openedCircuit->{PHEDEX_FROM_NODE}, 'T2_ANSE_CERN_1', "circuit manager / requestCircuit - circuit from node ok");
-        is($openedCircuit->{PHEDEX_TO_NODE}, "T2_ANSE_CERN_2", "circuit manager / requestCircuit - circuit to node ok");
+        is($openedCircuit->{NODE_A}, 'T2_ANSE_CERN_1', "circuit manager / requestCircuit - circuit from node ok");
+        is($openedCircuit->{NODE_B}, "T2_ANSE_CERN_2", "circuit manager / requestCircuit - circuit to node ok");
     }
 
     sub iGetInfoHttp {
@@ -90,8 +90,8 @@ sub testHttpCircuitLifecycle {
         
         my $circuit = $object->{"T2_ANSE_CERN_1-to-T2_ANSE_CERN_2"};
         
-        is($circuit->{PHEDEX_FROM_NODE}, "T2_ANSE_CERN_1", "http client - object test1");
-        is($circuit->{PHEDEX_TO_NODE}, "T2_ANSE_CERN_2", "http client - object test2");
+        is($circuit->{NODE_A}, "T2_ANSE_CERN_1", "http client - object test1");
+        is($circuit->{NODE_B}, "T2_ANSE_CERN_2", "http client - object test2");
         is($circuit->{LIFETIME}, undef, "http client - object test3");
     }
 
@@ -99,8 +99,8 @@ sub testHttpCircuitLifecycle {
         my ($kernel, $session, $circuitManager) = @_[KERNEL, SESSION, ARG0];
 
         my $request = {
-            FROM_NODE   => "T2_ANSE_CERN_1",
-            TO_NODE     => "T2_ANSE_CERN_2",
+            NODE_A      => "T2_ANSE_CERN_1",
+            NODE_B      => "T2_ANSE_CERN_2",
         };
         
         my $postback = $session->postback("iTestPostback");
@@ -114,20 +114,19 @@ sub testHttpCircuitLifecycle {
         my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
         my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-        is($circuit->{STATUS}, CIRCUIT_STATUS_OFFLINE, "circuit manager / teardownCircuit - circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "circuit manager / teardownCircuit - circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $establishedtime = $circuit->{ESTABLISHED_TIME};
         my $offlinetime = $circuit->{LAST_STATUS_CHANGE};
 
-        my $fileEstablished = $baseLocation."/data/online/$linkName-$partialID-".formattedTime($establishedtime);
-        my $fileOffline = $baseLocation."/data/offline/$linkName-$partialID-".formattedTime($offlinetime);
+        my $fileEstablished = $baseLocation."/data/circuits/online/$linkName-$partialID-".formattedTime($establishedtime);
+        my $fileOffline = $baseLocation."/data/circuits/offline/$linkName-$partialID-".formattedTime($offlinetime);
 
         ok(!-e $fileEstablished, "circuit manager / teardownCircuit - request for circuit has been removed");
         ok(-e $fileOffline, "circuit manager / teardownCircuit - circuit has been established");
 
-        my ($openedCircuit, $returnCode) = &openCircuit($fileOffline);
-        is($returnCode, CIRCUIT_OK, "circuit manager / established - was able to open saved state for circuit");
+        my $openedCircuit = &openState($fileOffline);
         ok($openedCircuit, "circuit manager / established - was able to open saved state for circuit");
     }
 
@@ -137,7 +136,7 @@ sub testHttpCircuitLifecycle {
         $userAgent->unspawn();
     }
 
-    my ($circuitManager, $session) = setupCircuitManager(3, 'http-control.log', undef,
+    my ($circuitManager, $session) = setupResourceManager(3, 'http-control.log', undef,
                                                         [[\&iStartUserAgent, 0.1],              # Start HTTP Client
                                                          [\&iRequestHttp, 0.2],                 # Request a circuit via the web interface
                                                          [\&iTestHttpRequest, 0.4],             # Test request

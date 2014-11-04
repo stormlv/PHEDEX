@@ -5,8 +5,9 @@ use warnings;
 
 use File::Copy qw(move);
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::Circuit;
-use PHEDEX::File::Download::Circuits::CircuitManager;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use PHEDEX::File::Download::Circuits::ResourceManager;
 use PHEDEX::File::Download::Circuits::Constants;
 use PHEDEX::Tests::File::Download::Helpers::ObjectCreation;
 use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
@@ -14,7 +15,7 @@ use POE;
 use POSIX;
 use Test::More;
 
-# This test consists of creating many circuits in order to determine how the CircuitManager handles the workload
+# This test consists of creating many circuits in order to determine how the ResourceManager handles the workload
 sub testMaxCircuitCount {
 
     our $allMyCircuits = 1000;
@@ -27,20 +28,19 @@ sub testMaxCircuitCount {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
             my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-            is($circuit->{STATUS}, CIRCUIT_STATUS_REQUESTING, "circuit manager / requestCircuit - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "StressTestConcurrentCircuits->requestCircuit - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 8);
             my $time = $circuit->{REQUEST_TIME};
-            my $fileReq = $baseLocation."/data/requested/$linkName-$partialID-".formattedTime($time);
+            my $fileReq = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($time);
 
-            ok(-e $fileReq, "circuit manager / requestCircuit - circuit $i has been requested");
+            ok(-e $fileReq, "StressTestConcurrentCircuits->requestCircuit - circuit $i has been requested");
 
-            my ($openedCircuit, $returnCode) = &openCircuit($fileReq);
-            is($returnCode, CIRCUIT_OK, "circuit manager / requestCircuit - was able to open saved state for circuit $i");
-            ok($openedCircuit, "circuit manager / requestCircuit - was able to open saved state for circuit $i");
+            my $openedCircuit= &openState($fileReq);
+            ok($openedCircuit, "StressTestConcurrentCircuits->requestCircuit - was able to open saved state for circuit $i");
 
-            is($openedCircuit->{PHEDEX_FROM_NODE}, 'T2_ANSE_CERN_X', "circuit manager / requestCircuit - circuit $i from node ok");
-            is($openedCircuit->{PHEDEX_TO_NODE}, "T2_ANSE_CERN_$i", "circuit manager / requestCircuit - circuit $i to node ok");
+            is($openedCircuit->{NODE_A}, 'T2_ANSE_CERN_X', "StressTestConcurrentCircuits->requestCircuit - circuit $i from node ok");
+            is($openedCircuit->{NODE_B}, "T2_ANSE_CERN_$i", "StressTestConcurrentCircuits->requestCircuit - circuit $i to node ok");
         }
     }
 
@@ -57,25 +57,24 @@ sub testMaxCircuitCount {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
             my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-            is($circuit->{STATUS}, CIRCUIT_STATUS_ONLINE, "circuit manager / established - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE, "StressTestConcurrentCircuits->established - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 8);
             my $requestedtime = $circuit->{REQUEST_TIME};
             my $establishedtime = $circuit->{ESTABLISHED_TIME};
 
-            my $fileRequested = $baseLocation."/data/requested/$linkName-$partialID-".formattedTime($requestedtime);
-            my $fileEstablished = $baseLocation."/data/online/$linkName-$partialID-".formattedTime($establishedtime);
+            my $fileRequested = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($requestedtime);
+            my $fileEstablished = $baseLocation."/data/circuits/online/$linkName-$partialID-".formattedTime($establishedtime);
 
-            ok(!-e $fileRequested, "circuit manager / established - request for circuit $i has been removed");
-            ok(-e $fileEstablished, "circuit manager / established - circuit $i has been established");
+            ok(!-e $fileRequested, "StressTestConcurrentCircuits->established - request for circuit $i has been removed");
+            ok(-e $fileEstablished, "StressTestConcurrentCircuits->established - circuit $i has been established");
 
-            my ($openedCircuit, $returnCode) = &openCircuit($fileEstablished);
-            is($returnCode, CIRCUIT_OK, "circuit manager / established - was able to open saved state for circuit $i");
-            ok($openedCircuit, "circuit manager / established - was able to open saved state for circuit $i");
+            my $openedCircuit = &openState($fileEstablished);
+            ok($openedCircuit, "StressTestConcurrentCircuits->established - was able to open saved state for circuit $i");
 
-            is($openedCircuit->{CIRCUIT_FROM_IP}, '127.1.0.1', "circuit manager / established - circuit $i from ip ok");
-            is($openedCircuit->{CIRCUIT_TO_IP}, $ip, "circuit manager / established - circuit $i to ip ok");
-            ok($openedCircuit->{LIFETIME}, "circuit manager / established - circuit $i has a life set");
+            is($openedCircuit->{IP_A}, '127.1.0.1', "StressTestConcurrentCircuits->established - circuit $i from ip ok");
+            is($openedCircuit->{IP_B}, $ip, "StressTestConcurrentCircuits->established - circuit $i to ip ok");
+            ok($openedCircuit->{LIFETIME}, "StressTestConcurrentCircuits->established - circuit $i has a life set");
         }
     }
 #
@@ -88,25 +87,24 @@ sub testMaxCircuitCount {
             my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
             my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-            is($circuit->{STATUS}, CIRCUIT_STATUS_OFFLINE, "circuit manager / teardownCircuit - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "StressTestConcurrentCircuits->teardownCircuit - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 8);
             my $establishedtime = $circuit->{ESTABLISHED_TIME};
             my $offlinetime = $circuit->{LAST_STATUS_CHANGE};
 
-            my $fileEstablished = $baseLocation."/data/online/$linkName-$partialID-".formattedTime($establishedtime);
-            my $fileOffline = $baseLocation."/data/offline/$linkName-$partialID-".formattedTime($offlinetime);
+            my $fileEstablished = $baseLocation."/data/circuits/online/$linkName-$partialID-".formattedTime($establishedtime);
+            my $fileOffline = $baseLocation."/data/circuits/offline/$linkName-$partialID-".formattedTime($offlinetime);
 
-            ok(!-e $fileEstablished, "circuit manager / teardownCircuit - request for circuit $i has been removed");
-            ok(-e $fileOffline, "circuit manager / teardownCircuit - circuit $i has been established");
+            ok(!-e $fileEstablished, "StressTestConcurrentCircuits->teardownCircuit - request for circuit $i has been removed");
+            ok(-e $fileOffline, "StressTestConcurrentCircuits->teardownCircuit - circuit $i has been established");
 
-            my ($openedCircuit, $returnCode) = &openCircuit($fileOffline);
-            is($returnCode, CIRCUIT_OK, "circuit manager / established - was able to open saved state for circuit $i");
-            ok($openedCircuit, "circuit manager / established - was able to open saved state for circuit $i");
+            my $openedCircuit = &openState($fileOffline);
+            ok($openedCircuit, "StressTestConcurrentCircuits->established - was able to open saved state for circuit $i");
         }
     }
 
-    my ($circuitManager, $session) = setupCircuitManager(15, 'creating--many-circuits.log', undef,
+    my ($circuitManager, $session) = setupResourceManager(15, 'creating--many-circuits.log', undef,
                                                             [[\&iTestMaxRequestCount, 2],
                                                              [\&iTestMaxSwitchToEstablished, 6],
                                                              [\&iTestMaxSwitchToOffline, 12]]);

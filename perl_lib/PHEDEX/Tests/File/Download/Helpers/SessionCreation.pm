@@ -8,11 +8,11 @@ use base 'Exporter';
 use IO::File;
 use File::Copy qw(move);
 use File::Path;
-use PHEDEX::File::Download::Circuits::CircuitManager;
+use PHEDEX::File::Download::Circuits::ResourceManager;
 use POE;
 use POSIX;
 
-our @EXPORT = qw(setupSession setupCircuitManager logChecking $baseLocation);
+our @EXPORT = qw(setupSession setupResourceManager logChecking $baseLocation);
 our $baseLocation = '/tmp/tests/circuit-manager';
 
 sub setupSession {
@@ -44,8 +44,8 @@ sub setupSession {
 }
 
 # Sets up circuit manager and test area in order to be used for testing the 'verifyStateConsistency' event
-sub setupCircuitManager {
-    my ($runTime, $logName, $verify, $additionalEvents, $httpControl) = @_;
+sub setupResourceManager {
+    my ($runTime, $logName, $verify, $additionalEvents, $httpControl, $backend, $backendArgs) = @_;
 
     # Clear the test area if there's anything there
     File::Path::rmtree("$baseLocation".'/data', 1, 1) if (-d "$baseLocation".'/data');
@@ -54,12 +54,15 @@ sub setupCircuitManager {
     File::Path::make_path("$baseLocation".'/data/offline', {error => \$err});
     File::Path::make_path("$baseLocation".'/logs', {error => \$err});
 
+    $backend = 'Dummy' if ! defined $backend;
+    $backendArgs = {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'} if ! defined $backendArgs;
+
     # Create a new circuit manager and setup session
-    my $circuitManager = PHEDEX::File::Download::Circuits::CircuitManager->new(BACKEND_TYPE => 'Dummy',
-                                                                               BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
-                                                                               CIRCUITDIR => "$baseLocation".'/data',
-                                                                               VERBOSE => 1,
-                                                                               HTTP_CONTROL => defined $httpControl? $httpControl : 0);
+    my $circuitManager = PHEDEX::File::Download::Circuits::ResourceManager->new(BACKEND_TYPE => $backend,
+                                                                                BACKEND_ARGS => $backendArgs,
+                                                                                CIRCUITDIR => "$baseLocation".'/data',
+                                                                                VERBOSE => 1,
+                                                                                HTTP_CONTROL => defined $httpControl? $httpControl : 0);
     # Only start the events that we deem necesssary
     $circuitManager->{PERIOD_CONSISTENCY_CHECK} = $verify;
 

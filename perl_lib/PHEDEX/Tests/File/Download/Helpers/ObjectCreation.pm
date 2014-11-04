@@ -3,8 +3,8 @@ package PHEDEX::Tests::File::Download::Helpers::ObjectCreation;
 use strict;
 use warnings;
 
-use PHEDEX::File::Download::Circuits::Circuit;
 use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::Core::Timing;
 use base 'Exporter';
 
@@ -18,9 +18,9 @@ sub createRequestingCircuit {
     $req_time = $req_time || 1398426904;
     $backend = $backend || 'Dummy';
 
-    my $testCircuit = PHEDEX::File::Download::Circuits::Circuit->new();
-    $testCircuit->setNodes($from, $to);
-    $testCircuit->registerRequest($backend, $life, $req_bandwidth);
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new();
+    $testCircuit->initResource($backend, $from, $to, 0);
+    $testCircuit->registerRequest($life, $req_bandwidth);
     $testCircuit->{REQUEST_TIME} = $req_time;
 
     return $testCircuit;
