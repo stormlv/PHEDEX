@@ -64,8 +64,8 @@ sub _poe_init
 sub backendRequestCircuit {
     my ($self, $kernel, $session, $circuit, $requestCallback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     
-    my $fromNode = $circuit->{PHEDEX_FROM_NODE};
-    my $toNode = $circuit->{PHEDEX_TO_NODE};
+    my $fromNode = $circuit->{NODE_A};
+    my $toNode = $circuit->{NODE_B};
     
     # Setup the object sent to ML
     my $requestObject = {

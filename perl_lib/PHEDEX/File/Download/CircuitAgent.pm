@@ -11,9 +11,9 @@ use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
 use PHEDEX::Core::DB;
 use PHEDEX::Error::Constants;
-use PHEDEX::File::Download::Circuits::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::File::Download::Circuits::Constants;
-use PHEDEX::File::Download::Circuits::CircuitManager;
+use PHEDEX::File::Download::Circuits::ResourceManager;
 use PHEDEX::File::Download::Circuits::TFCUtils;
 
 use feature qw(switch);
@@ -47,10 +47,10 @@ sub new
     my $self = $class->SUPER::new(%args);
 
     # Create circuit manager
-    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::CircuitManager->new(CIRCUITDIR   => "$self->{DROPDIR}"."/circuits",
-                                                                                     BACKEND_TYPE => $self->{CIRCUIT_BACKEND},
-                                                                                     BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
-                                                                                     VERBOSE      => $self->{VERBOSE});
+    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::ResourceManager->new(CIRCUITDIR   => "$self->{DROPDIR}"."/circuits",
+                                                                                      BACKEND_TYPE => $self->{CIRCUIT_BACKEND},
+                                                                                      BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
+                                                                                      VERBOSE      => $self->{VERBOSE});
 
     # Redefine how to handle signals
     $SIG{INT} = $SIG{TERM} = sub {
@@ -58,7 +58,7 @@ sub new
 		$self->{JOBMANAGER}->killAllJobs();
 		
 		# Cancels requests in progress and tears_down existing circuits
-		$self->{CIRCUIT_MANAGER}->teardownAll();		
+		$self->{CIRCUIT_MANAGER}->stop();
     };
 
     bless $self, $class;
@@ -286,7 +286,7 @@ sub transfer_task
     my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
 
     # Check to see if a circuit is online for this pair of nodes
-    my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, CIRCUIT_STATUS_ONLINE);
+    my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, STATUS_CIRCUIT_ONLINE);
 
     # A circuit is established, better as well use it
     # TODO: We probably should do a bulk change of PFNs per job, instead of per task in job
@@ -297,7 +297,7 @@ sub transfer_task
     # sequentially launch two separate jobs (one for the files on the circuit and
     # one for the files on the normal link) so no files in a job are lost, when the swich occurs
     if (defined $circuit) {
-        my ($fromIP, $toIP) = ($circuit->{CIRCUIT_FROM_IP}, $circuit->{CIRCUIT_TO_IP});
+        my ($fromIP, $toIP) = ($circuit->{IP_A}, $circuit->{IP_B});
 
         my $fromPFN = replaceHostname($task->{FROM_PFN}, $fromProtocol, $fromIP, );
         my $toPFN = replaceHostname($task->{TO_PFN}, $toProtocol, $toIP);
@@ -310,8 +310,8 @@ sub transfer_task
 
             $task->{CIRCUIT} = $circuit->{ID};
             $task->{CIRCUIT_LINK} = $circuit->getLinkName();
-            $task->{CIRCUIT_FROM_IP} = $fromIP;
-            $task->{CIRCUIT_TO_IP} = $toIP;
+            $task->{IP_A} = $fromIP;
+            $task->{IP_B} = $toIP;
         } else {
             $self->Logmsg("$mess: Cannot replace hostname in one or more PFNs");
         }
@@ -341,13 +341,13 @@ sub finish_task
 
     $self->Logmsg("xstats circuit details:"
              ." circuit-link=$task->{CIRCUIT_LINK}"
-             ." circuit-from-IP=$task->{CIRCUIT_FROM_IP}"
-             ." circuit-to-IP=$task->{CIRCUIT_TO_IP}");
+             ." circuit-from-IP=$task->{IP_A}"
+             ." circuit-to-IP=$task->{IP_B}");
 
     if ($task->{REPORT_CODE} != 0 || $task->{XFER_CODE} != 0) {
 
         # Make sure that the circuit has not expired yet
-        my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, CIRCUIT_STATUS_ONLINE);
+        my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, STATUS_CIRCUIT_ONLINE);
         return 1 unless defined $circuit;
 
         my $linkName = $circuit->getLinkName();

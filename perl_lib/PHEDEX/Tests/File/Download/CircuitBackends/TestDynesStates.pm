@@ -48,9 +48,9 @@ sub _start {
 sub handleAction {
     my ($kernel, $session, $arguments) = @_[KERNEL, SESSION, ARG1];
 
-    my $pid = $arguments->[CIRCUIT_EXTERNAL_PID];
-    my $eventName = $arguments->[CIRCUIT_EXTERNAL_EVENTNAME];
-    my $output = $arguments->[CIRCUIT_EXTERNAL_OUTPUT];
+    my $pid = $arguments->[EXTERNAL_PID];
+    my $eventName = $arguments->[EXTERNAL_EVENTNAME];
+    my $output = $arguments->[EXTERNAL_OUTPUT];
 
     my $stateOubject = $allStates->{$pid};
     my $returns = $stateOubject->updateState($output);

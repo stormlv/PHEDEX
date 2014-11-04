@@ -7,8 +7,9 @@ use POE;
 use Test::More;
 
 use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
-use PHEDEX::File::Download::Circuits::Circuit;
-use PHEDEX::File::Download::Circuits::CircuitManager;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use PHEDEX::File::Download::Circuits::ResourceManager;
 use PHEDEX::File::Download::Circuits::Constants;
 use PHEDEX::Tests::File::Download::Helpers::ObjectCreation;
 use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
@@ -30,13 +31,13 @@ sub testMLBackend {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-        is($circuit->{STATUS}, CIRCUIT_STATUS_REQUESTING, "iTestCircuitRequest: circuit status in circuit manager is correct");
-        is($circuit->{PHEDEX_FROM_NODE}, "T2_ANSE_CERN_1", "iTestCircuitRequest: circuit request validated FROM parameter");
-        is($circuit->{PHEDEX_TO_NODE}, "T2_ANSE_CERN_2", "iTestCircuitRequest: circuit request validated TO parameter");
+        is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "iTestCircuitRequest: circuit status in circuit manager is correct");
+        is($circuit->{NODE_A}, "T2_ANSE_CERN_1", "iTestCircuitRequest: circuit request validated FROM parameter");
+        is($circuit->{NODE_B}, "T2_ANSE_CERN_2", "iTestCircuitRequest: circuit request validated TO parameter");
         
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $time = $circuit->{REQUEST_TIME};
-        my $fileReq = $baseLocation."/data/requested/$linkName-$partialID-".formattedTime($time);
+        my $fileReq = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($time);
         ok(-e $fileReq, "iTestCircuitRequest: circuit request has also been saved to a file");
     }
 
@@ -47,15 +48,15 @@ sub testMLBackend {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-        is($circuit->{STATUS}, CIRCUIT_STATUS_ONLINE, "iTestCircuitEstablished: circuit status in circuit manager is correct");
-        is($circuit->{PHEDEX_FROM_NODE}, "T2_ANSE_CERN_1", "iTestCircuitEstablished: circuit established, validated PHEDEX_FROM_NODE parameter");
-        is($circuit->{PHEDEX_TO_NODE}, "T2_ANSE_CERN_2", "iTestCircuitEstablished: circuit established, validated PHEDEX_TO_NODE parameter");
-        is($circuit->{CIRCUIT_FROM_IP}, "127.0.0.3", "iTestCircuitEstablished: circuit established, validated CIRCUIT_FROM_IP parameter");
-        is($circuit->{CIRCUIT_TO_IP}, "127.0.0.2", "iTestCircuitEstablished: circuit established, validated CIRCUIT_TO_IP parameter");
+        is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE, "iTestCircuitEstablished: circuit status in circuit manager is correct");
+        is($circuit->{NODE_A}, "T2_ANSE_CERN_1", "iTestCircuitEstablished: circuit established, validated NODE_A parameter");
+        is($circuit->{NODE_B}, "T2_ANSE_CERN_2", "iTestCircuitEstablished: circuit established, validated NODE_B parameter");
+        is($circuit->{IP_A}, "127.0.0.3", "iTestCircuitEstablished: circuit established, validated IP_A parameter");
+        is($circuit->{IP_B}, "127.0.0.2", "iTestCircuitEstablished: circuit established, validated IP_B parameter");
         
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $time = $circuit->{ESTABLISHED_TIME};
-        my $fileReq = $baseLocation."/data/online/$linkName-$partialID-".formattedTime($time);
+        my $fileReq = $baseLocation."/data/circuits/online/$linkName-$partialID-".formattedTime($time);
         ok(-e $fileReq, "iTestCircuitEstablished: established circuit has also been saved to a file");
     }
     
@@ -76,14 +77,14 @@ sub testMLBackend {
         my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
         my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-        is($circuit->{STATUS}, CIRCUIT_STATUS_OFFLINE, "iTestTeardown: circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "iTestTeardown: circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $establishedtime = $circuit->{ESTABLISHED_TIME};
         my $offlinetime = $circuit->{LAST_STATUS_CHANGE};
 
-        my $fileEstablished = $baseLocation."/data/online/$linkName-$partialID-".formattedTime($establishedtime);
-        my $fileOffline = $baseLocation."/data/offline/$linkName-$partialID-".formattedTime($offlinetime);
+        my $fileEstablished = $baseLocation."/data/circuits/online/$linkName-$partialID-".formattedTime($establishedtime);
+        my $fileOffline = $baseLocation."/data/circuits/offline/$linkName-$partialID-".formattedTime($offlinetime);
 
         ok(!-e $fileEstablished, "iTestTeardown: online circuit has been removed");
         ok(-e $fileOffline, "iTestTeardown: offline circuit has been saved");

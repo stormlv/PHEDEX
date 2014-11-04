@@ -126,9 +126,9 @@ sub handleTaskStdIO {
     # If an action was specified, call it
     if (defined $action) {
         my @arguments;
-        $arguments[CIRCUIT_EXTERNAL_PID] = $pid;
-        $arguments[CIRCUIT_EXTERNAL_EVENTNAME] = $sendingEvent;
-        $arguments[CIRCUIT_EXTERNAL_OUTPUT] = $output;
+        $arguments[EXTERNAL_PID] = $pid;
+        $arguments[EXTERNAL_EVENTNAME] = $sendingEvent;
+        $arguments[EXTERNAL_OUTPUT] = $output;
         $action->(@arguments);
     }
 }
@@ -160,8 +160,8 @@ sub handleTaskSignal {
         # If an action was specified, call it
     if (defined $action) {
         my @arguments;
-        $arguments[CIRCUIT_EXTERNAL_PID] = $pid;
-        $arguments[CIRCUIT_EXTERNAL_EVENTNAME] = $sendingEvent;
+        $arguments[EXTERNAL_PID] = $pid;
+        $arguments[EXTERNAL_EVENTNAME] = $sendingEvent;
         $action->(@arguments);
     }
 }

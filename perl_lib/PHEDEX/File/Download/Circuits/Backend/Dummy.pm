@@ -4,12 +4,15 @@ use strict;
 use warnings;
 
 use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::Logging';
-use PHEDEX::Core::Command;
-use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
-use PHEDEX::File::Download::Circuits::Circuit;
-use PHEDEX::File::Download::Circuits::Constants;
+
 use POE;
 use List::Util qw[min max];
+
+use PHEDEX::Core::Command;
+use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
+use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+
 
 sub new
 {
@@ -49,12 +52,12 @@ sub backendRequestCircuit {
         $kernel->call($session, $callback, $circuit, undef, CIRCUIT_REQUEST_FAILED_PARAMS);
     }
 
-    my $fromNode = $circuit->{PHEDEX_FROM_NODE};
-    my $toNode = $circuit->{PHEDEX_TO_NODE};
+    my $fromNode = $circuit->{NODE_A};
+    my $toNode = $circuit->{NODE_B};
 
     my $returnValues = {
-        FROM_IP         =>      $self->{AGENT_TRANSLATION}{$fromNode}{IP},
-        TO_IP           =>      $self->{AGENT_TRANSLATION}{$toNode}{IP},
+        IP_A            =>      $self->{AGENT_TRANSLATION}{$fromNode}{IP},
+        IP_B            =>      $self->{AGENT_TRANSLATION}{$toNode}{IP},
         BANDWIDTH       =>      min($self->{AGENT_TRANSLATION}{$fromNode}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$toNode}{BANDWIDTH}),
     };
 
