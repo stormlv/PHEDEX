@@ -189,7 +189,8 @@ sub openState {
         ! defined $resource->{STATUS} ||
         ! defined $resource->{NODE_A} || ! defined $resource->{NODE_B} ||
         ! defined $resource->{BOOKING_BACKEND} ||
-        ! defined $resource->{STATE_DIR}) {
+        ! defined $resource->{STATE_DIR} ||
+        ! defined $resource->{LAST_STATUS_CHANGE}) {
         return undef;
     }
 
