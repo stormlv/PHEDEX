@@ -219,22 +219,10 @@ sub getFailedTransfers() {
     return $self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS};
 }
 
-# Generates a file name in the form of : FROM_NODE-(to)-TO_NODE-UID-time
-# ex. T2_ANSE_Amsterdam-to-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is unidirectional
-# or T2_ANSE_Amsterdam-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is bi-directional.
-# Returns a save path ({STATE_DIR}/$state) and a file path ({STATE_DIR}/$state/$FROM_NODE-to-$TO_NODE-$time)
-# We could also put part of the UUID at the end of the file but for now it is not needed
-# unless we would request multiple circuits on the same link *at the same time*...which we don't/won't?
-sub getSaveName() {
+# Returns what the save path and save time should be based on current status
+sub getSaveParams {
     my $self = shift;
-    my ($filePath, $savePath, $saveTime);
-    
-    my $msg = "Circuit->getSaveName";
-        
-    if (! defined $self->{ID}) {
-        $self->Logmsg("$msg: Cannot generate a save name for a resource which is not initialised");
-        return undef;
-    }
+    my ($savePath, $saveTime);
     
     switch ($self->{STATUS}) {
         case STATUS_CIRCUIT_REQUESTING {
@@ -250,17 +238,8 @@ sub getSaveName() {
             $saveTime = $self->{LAST_STATUS_CHANGE};
         }
     }
-
-    if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
-        $self->Logmsg("$msg: Invalid parameters in generating a circuit file name");
-        return undef;
-    }
-
-    my $partialID = substr($self->{ID}, 1, 8);
-    my $formattedTime = &formattedTime($saveTime);
-    $filePath = $savePath.'/'.$self->{NAME}."-$partialID-".$formattedTime;
-
-    return ($savePath, $filePath);
+    
+    return ($savePath, $saveTime);
 }
 
 1;

@@ -44,12 +44,13 @@ sub new
             BANDWIDTH_ALLOCATED     => undef,               # Bandwidth allocated
             BANDWIDTH_USED          => undef,               # Bandwidth we're actually using
             
+            SCOPE                   => undef,
             STATUS                  => undef,
             LAST_STATUS_CHANGE      => undef,
             
             STATE_DIR               => undef,
             
-            VERBOSE                 => undef,
+            VERBOSE                 => 0,
     );
 
     my %args = (@_);
@@ -125,14 +126,67 @@ sub initResource {
     $self->{BIDIRECTIONAL} = $bidirectional ? 1 : 0;
     $self->{NAME} = getPath($nodeA, $nodeB, $self->{BIDIRECTIONAL});
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();
+    $self->{SCOPE} = 'GENERIC';
     $self->Logmsg("$msg: Successfully initialised resource. $type between $nodeA and $nodeB");
     
     return OK;
 }
 
-sub getSaveName {
+sub getSaveParams {
     my $self = shift;
-    $self->Fatal("NetworkResource->getSaveName: method not implemented in extending class ", __PACKAGE__);
+    $self->Fatal("NetworkResource->getSaveParams: method not implemented in extending class ", __PACKAGE__);
+}
+
+# Generates a file name in the form of : NODE_A-(to)-NODE_B-UID-time
+# ex. T2_ANSE_Amsterdam-to-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is unidirectional
+# or T2_ANSE_Amsterdam-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is bi-directional.
+# Returns a save path ({STATE_DIR}/[circuits/bod]/$state) and a file path ({STATE_DIR}/[circuits/bod]/$state/$NODE_A-to-$NODE_B-$time)
+sub getSavePaths{
+    my $self = shift;
+
+    my $msg = "NetworkResource->getSavePaths";
+        
+    if (! defined $self->{ID}) {
+        $self->Logmsg("$msg: Cannot generate a save name for a resource which is not initialised");
+        return undef;
+    }
+    
+    my ($savePath, $saveTime) = $self->getSaveParams();
+
+    if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
+        $self->Logmsg("$msg: Invalid parameters in generating a circuit file name");
+        return undef;
+    }
+
+    my $partialID = substr($self->{ID}, 1, 7);
+    my $formattedTime = &formattedTime($saveTime);
+    my $fileName = $self->{NAME}."-$partialID-".$formattedTime;
+    my $filePath = $savePath.'/'.$fileName;
+
+    # savePath: {STATE_DIR}/[circuits|bod]/$state
+    # fileName: NODE_A-(to)-NODE_B-UID-time
+    # filePath (savePath/fileName): {STATE_DIR}/[circuits|bod]/$state/NODE_A-(to)-NODE_B-UID-time
+    return ($savePath, $fileName, $filePath);
+}
+
+sub checkCorrectPlacement {
+    my ($self, $path) = @_;
+    
+    my $msg = 'NetworkResource->checkCorrectPlacement';
+    
+    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
+    
+    if (! defined $savePath || ! defined $filePath) {
+        $self->Logmsg("$msg: Cannot generate save name...");
+        return ERROR_GENERIC;
+    }
+    
+    if ($filePath ne $path) {
+        $self->Logmsg("$msg: Provided filepath doesn't match where object should be located");
+        return ERROR_GENERIC;
+    } else {
+        return OK;
+    }
 }
 
 # Saves the current state of the resource
@@ -148,7 +202,7 @@ sub saveState {
     my $msg = 'NetworkResource->saveState';
 
     # Generate file name based on
-    my ($savePath, $filePath) = $self->getSaveName();
+    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
     if (! defined $filePath) {
         $self->Logmsg("$msg: An error has occured while generating file name");
         return ERROR_SAVING;
@@ -203,7 +257,7 @@ sub removeState {
 
     my $msg = 'NetworkResource->removeState';
 
-    my ($savePath, $filePath) = $self->getSaveName();
+    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
     if (!-d $savePath || !-e $filePath) {
         $self->Logmsg("$msg: There's nothing to remove from the state folders");
         return ERROR_GENERIC;

@@ -47,9 +47,10 @@ sub initResource {
     return $self->SUPER::initResource($backend, BOD, $nodeA, $nodeB, $bidirectional);
 }
 
-sub getSaveName {
+# Returns what the save path and save time should be based on current status
+sub getSaveParams {
     my $self = shift;
-    my ($filePath, $savePath, $saveTime);
+    my ($savePath, $saveTime);
     
     # Bandwidth object will be either put in /offline or /online
     # As opposed to circuit, it's not useful to have a 3rd folder called "/updating"
@@ -64,16 +65,8 @@ sub getSaveName {
     }
     
     $saveTime = $self->{LAST_STATUS_CHANGE};
-        
-    if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
-        $self->Logmsg("Bandwidth->getSaveName: Invalid parameters in generating a file name");
-        return undef;
-    }
-
-    my $partialID = substr($self->{ID}, 1, 8);
-    $filePath = $savePath.'/'.$self->{NAME}."-$partialID-".formattedTime($saveTime);
     
-    return ($savePath, $filePath);
+    return ($savePath, $saveTime);
 }
 
 # Used to register a bandwidth update request 
