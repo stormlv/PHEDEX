@@ -37,11 +37,13 @@ sub new {
     my %params = (
 
             # Main circuit related parameters
+            # TODO: Rename circuits -> resource
             CIRCUITS                        => {},          # All circuits in request or established, grouped by link (LINK -> CIRCUIT)
             CIRCUITDIR                      => '',          # Default location to place circuit state files
             SCOPE                   =>  'GENERIC',          # NOT USED atm
 
             # Circuit booking backend options
+            # TODO: Allow the use of multiple backends (may not be the same backend for circuits or BW)
             BACKEND_TYPE                    => 'Dummy',
             BACKEND                         => undef,
 
@@ -72,8 +74,8 @@ sub new {
             
             HTTP_SERVER                     => undef,
             HTTP_HANDLE_DETAILS             => [
-                                                { HANDLER => 'handleHTTPcreation', URI => '/createCircuit', METHOD => "POST"},
-                                                { HANDLER => 'handleHTTPteardown', URI => '/removeCircuit', METHOD => "POST"},
+                                                { HANDLER => 'handleHTTPCircuitCreation', URI => '/createCircuit', METHOD => "POST"},
+                                                { HANDLER => 'handleHTTPCircuitTeardown', URI => '/removeCircuit', METHOD => "POST"},
                                                 { HANDLER => 'handleHTTPinfo', URI => '/getInfo', METHOD => "GET"},
                                                ],
 
@@ -189,114 +191,121 @@ sub canRequestCircuit {
 #   - circuits/requested
 #   - circuits/online
 #   - circuits/offline
+#   - bod/online
+#   - bod/offline
 sub verifyStateConsistency
 {
     my ( $self, $kernel, $session ) = @_[ OBJECT, KERNEL, SESSION];
-    my ($allCircuits, @circuitsRequested, @circuitsOnline, @circuitsOffline);
-
     my $msg = "ResourceManager->$ownHandles->{VERIFY_STATE}";
 
     $self->Logmsg("$msg: enter event") if ($self->{VERBOSE});
     $self->delay_max($kernel, $ownHandles->{VERIFY_STATE}, $self->{PERIOD_CONSISTENCY_CHECK}) if (defined $self->{PERIOD_CONSISTENCY_CHECK});
 
-    &getdir($self->{CIRCUITDIR}."/circuits/requested", \@circuitsRequested);
-    &getdir($self->{CIRCUITDIR}."/circuits/online", \@circuitsOnline);
-    &getdir($self->{CIRCUITDIR}."/circuits/offline", \@circuitsOffline);
-
-    $allCircuits->{'requested'} = \@circuitsRequested;
-    $allCircuits->{'online'} = \@circuitsOnline;
-    $allCircuits->{'offline'} = \@circuitsOffline;
-
+    my ($allResources, @circuits, @bod);
+    # Read all the folders for each resource time (online, offline, etc)
+    &getdir($self->{CIRCUITDIR}."/circuits", \@circuits);
+    &getdir($self->{CIRCUITDIR}."/bod", \@bod);
+    
+    # For each circuit folder, add what you find to the resource hash with the appropiate tag
+    foreach my $tag (@circuits) {
+        my @circuitsSubset;
+        &getdir($self->{CIRCUITDIR}."/circuits/".$tag, \@circuitsSubset);
+        $allResources->{'circuits/'.$tag} = \@circuitsSubset;
+    }
+    
+    # For each bandwidth folder, add what you find to the resource hash with the appropiate tag
+    foreach my $tag (@bod) {
+        my @bodSubset;
+        &getdir($self->{CIRCUITDIR}."/bod/".$tag, \@bodSubset);
+        $allResources->{'bod/'.$tag} = \@bodSubset;
+    }
+    
     my $timeNow = &mytimeofday();
 
-    foreach my $tag (keys %{$allCircuits}) {
+    foreach my $tag (keys %{$allResources}) {
 
-        # Skip if there are no files in one of the 3 folders
-        if (!scalar @{$allCircuits->{$tag}}) {
+        # Skip if there are no files in one of the folders
+        if (!scalar @{$allResources->{$tag}}) {
             $self->Logmsg("$msg: No files found in /$tag") if ($self->{VERBOSE});
             next;
         }
 
-        foreach my $file (@{$allCircuits->{$tag}}) {
-            my $path = $self->{CIRCUITDIR}.'/circuits/'.$tag.'/'.$file;
+        foreach my $file (@{$allResources->{$tag}}) {
+            my $path = $self->{CIRCUITDIR}.'/'.$tag.'/'.$file;
             $self->Logmsg("$msg: Now handling $path") if ($self->{VERBOSE});
 
-            # Attempt to open circuit
-            my $circuit = &openState($path);
+            # Attempt to open resource
+            my $resource = &openState($path);
 
             # Remove the state file if the read didn't return OK
-            if (!$circuit) {
-                $self->Logmsg("$msg: Removing invalid circuit file $path");
+            if (!$resource) {
+                $self->Logmsg("$msg: Removing invalid resource file $path");
                 unlink $path;
                 next;
             }
-
-            # Check to see if the circuit was saved in the proper place
-            # If not, remove the link and force a resave (should put it in the proper place after this)
-            if (($circuit->{STATUS} == STATUS_CIRCUIT_REQUESTING && $tag ne 'requested') ||
-                ($circuit->{STATUS} == STATUS_CIRCUIT_ONLINE && $tag ne 'online') ||
-                ($circuit->{STATUS} == STATUS_CIRCUIT_OFFLINE && $tag ne 'offline')) {
-                    $self->Logmsg("$msg: Found circuit in incorrect folder. Removing and resaving...");
-                    unlink $path;
-                    $circuit->saveState();
+            
+            if ($resource->checkCorrectPlacement($path) == ERROR_GENERIC) {
+                $self->Logmsg("$msg: Resource found in incorrect folder. Removing and resaving...");
+                unlink $path;
+                $resource->saveState();
             }
 
-            my $linkName = $circuit->{NAME};
+            my $linkName = $resource->{NAME};
 
             # The following three IFs could very well have been condensed into one, but
-            # I wanted to provide custom debug messages whenver we skipped them
+            # I wanted to provide custom debug messages whenever we skipped them
 
             # If the scope doesn't match
-            if ($self->{SCOPE} ne $circuit->{SCOPE}) {
-                $self->Logmsg("$msg: Skipping circuit since its scope don't match ($circuit->{SCOPE} vs $self->{SCOPE})")  if ($self->{VERBOSE});
+            if ($self->{SCOPE} ne $resource->{SCOPE}) {
+                $self->Logmsg("$msg: Skipping resource since its scope don't match ($resource->{SCOPE} vs $self->{SCOPE})")  if ($self->{VERBOSE});
                 next;
             }
 
             # If the backend doesn't match the one we have here, skip it
-            if ($circuit->{BOOKING_BACKEND} ne $self->{BACKEND_TYPE}) {
-                $self->Logmsg("$msg: Skipping circuit due to different backend used ($circuit->{BOOKING_BACKEND} vs $self->{BACKEND_TYPE})") if ($self->{VERBOSE});
+            if ($resource->{BOOKING_BACKEND} ne $self->{BACKEND_TYPE}) {
+                $self->Logmsg("$msg: Skipping resource due to different backend used ($resource->{BOOKING_BACKEND} vs $self->{BACKEND_TYPE})") if ($self->{VERBOSE});
                 next;
             }
 
             # If the backend no longer supports circuits on those links, skip them as well
-            if (! $self->{BACKEND}->checkLinkSupport($circuit->{NODE_A}, $circuit->{NODE_B})) {
-                $self->Logmsg("$msg: Skipping circuit since the backend no longer supports creation of circuits on $linkName") if ($self->{VERBOSE});
+            if (! $self->{BACKEND}->checkLinkSupport($resource->{NODE_A}, $resource->{NODE_B})) {
+                $self->Logmsg("$msg: Skipping resource since the backend no longer supports creation of circuits on $linkName") if ($self->{VERBOSE});
                 next;
             }
 
-            my $inMemoryCircuit;
+            my $inMemoryResource;
 
-            # Attempt to retrieve the circuit if it's in memory
+            # Attempt to retrieve the resource if it's in memory
             switch ($tag) {
-                case 'offline' {
-                    my $offlineCircuits = $self->{CIRCUITS_HISTORY}{$linkName};
-                    $inMemoryCircuit = $offlineCircuits->{$circuit->{ID}} if (defined $offlineCircuits && defined $offlineCircuits->{$circuit->{ID}});
+                case ["circuits/offline","bod/offline"] {
+                    my $offlineResources = $self->{CIRCUITS_HISTORY}{$linkName};
+                    $inMemoryResource = $offlineResources->{$resource->{ID}} if (defined $offlineResources && defined $offlineResources->{$resource->{ID}});
                 }
                 else {
-                    $inMemoryCircuit = $self->{CIRCUITS}{$linkName};
+                    $inMemoryResource = $self->{CIRCUITS}{$linkName};
                 }
             };
 
             # Skip this one if we found an identical circuit in memory
-            if ($circuit->compareResource($inMemoryCircuit)) {
-                $self->Logmsg("$msg: Skipping identical in-memory circuit") if ($self->{VERBOSE});
+            if ($resource->compareResource($inMemoryResource)) {
+                $self->Logmsg("$msg: Skipping identical in-memory resource") if ($self->{VERBOSE});
                 next;
             }
 
             # If, for the same link, the info differs between on disk and in memory,
             # yet the scope of the circuit is the same as the one for the CM
             # remove the one on disk and force a resave for the one in memory
-            if (defined $inMemoryCircuit) {
+            if (defined $inMemoryResource) {
                  $self->Logmsg("$msg: Removing similar circuit on disk and forcing resave of the one in memory");
                  unlink $path;
-                 $inMemoryCircuit->saveState();
+                 $inMemoryResource->saveState();
                  next;
             }
 
             # If we get to here it means that we didn't find anything in memory pertaining to a given link
-
+            
             switch ($tag) {
-                case 'requested' {
+                case 'circuits/requested' {
                     # This is a bit tricky to handle.
                     #   1) The circuit could still be 'in request'. If the booking agent died as well
                     #      then the circuit could be created and not know about it :|
@@ -305,10 +314,10 @@ sub verifyStateConsistency
                     # TODO : Another solution would be to wait a bit of time then attempt to 'teardown' the circuit
                     # This would ensure that everything is 'clean' after this method
                     unlink $path;
-                    $circuit->registerRequestFailure('Failure to restore request from disk');
-                    $circuit->saveState();
+                    $resource->registerRequestFailure('Failure to restore request from disk');
+                    $resource->saveState();
                 }
-                case 'online' {
+                case 'circuits/online' {
                     # Skip circuit if the link is currently blacklisted
                     if (defined $self->{LINKS_BLACKLISTED}{$linkName}) {
                         $self->Logmsg("$msg: Skipping circuit since $linkName is currently blacklisted");
@@ -317,32 +326,32 @@ sub verifyStateConsistency
                     }
 
                     # Now there are two cases:
-                    if (! defined $circuit->{LIFETIME} ||                                                                           # If the loaded circuit has a defined Lifetime parameter
-                        (defined $circuit->{LIFETIME} && ! $circuit->isExpired())) {                                                # and it's not expired
+                    if (! defined $resource->{LIFETIME} ||                                                                           # If the loaded circuit has a defined Lifetime parameter
+                        (defined $resource->{LIFETIME} && ! $resource->isExpired())) {                                                # and it's not expired
 
                         # Use the circuit
                         $self->Logmsg("$msg: Found established circuit $linkName. Using it");
-                        $self->{CIRCUITS}{$linkName} = $circuit;
+                        $self->{CIRCUITS}{$linkName} = $resource;
 
-                        if (defined $circuit->{LIFETIME}) {
-                            my $delay = $circuit->getExpirationTime() - &mytimeofday();
+                        if (defined $resource->{LIFETIME}) {
+                            my $delay = $resource->getExpirationTime() - &mytimeofday();
                             next if $delay < 0;
                             $self->Logmsg("$msg: Established circuit has lifetime defined. Starting timer for $delay");
-                            $self->delayAdd($kernel, $ownHandles->{HANDLE_TIMER}, $delay, CIRCUIT_TIMER_TEARDOWN, $circuit);
+                            $self->delayAdd($kernel, $ownHandles->{HANDLE_TIMER}, $delay, CIRCUIT_TIMER_TEARDOWN, $resource);
                         }
 
                     } else {                                                                                                        # Else we attempt to tear it down
                         $self->Logmsg("$msg: Attempting to teardown expired circuit $linkName");
-                        $self->handleCircuitTeardown($kernel, $session, $circuit);
+                        $self->handleCircuitTeardown($kernel, $session, $resource);
                     }
                 }
-                case 'offline' {
+                case ['circuits/offline', 'bod/offline'] {
                     # Don't add the circuit if the history is full and circuit is older than the oldest that we currently have on record
                     my $oldestCircuit = $self->{CIRCUITS_HISTORY_QUEUE}->[0];
                     if (scalar @{$self->{CIRCUITS_HISTORY_QUEUE}} < $self->{MAX_HISTORY_SIZE} ||
-                        !defined $oldestCircuit || $circuit->{LAST_STATUS_CHANGE} > $oldestCircuit->{LAST_STATUS_CHANGE}) {
+                        !defined $oldestCircuit || $resource->{LAST_STATUS_CHANGE} > $oldestCircuit->{LAST_STATUS_CHANGE}) {
                         $self->Logmsg("$msg: Found offline circuit. Adding it to history");
-                        $self->addCircuitToHistory($circuit);
+                        $self->addCircuitToHistory($resource);
                     }
                 }
             }
@@ -664,7 +673,7 @@ sub handleCircuitTeardown {
 
 ## HTTP Related controls
 
-sub handleHTTPcreation {
+sub handleHTTPCircuitCreation {
     my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
 
     my ($circuitManager) = @{$initialArgs};
@@ -680,7 +689,7 @@ sub handleHTTPcreation {
     $poe_kernel->post($session, 'requestCircuit', $fromNode, $toNode, $lifetime, $bandwidth);
 }
 
-sub handleHTTPteardown {
+sub handleHTTPCircuitTeardown {
     my ($kernel, $session, $initialArgs, $postArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
 
     my ($circuitManager) = @{$initialArgs};
