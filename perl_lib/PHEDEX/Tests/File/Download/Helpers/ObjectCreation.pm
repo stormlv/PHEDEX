@@ -4,11 +4,13 @@ use strict;
 use warnings;
 
 use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
 use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::Core::Timing;
 use base 'Exporter';
 
-our @EXPORT = qw(createRequestingCircuit createEstablishedCircuit createOfflineCircuit createTask);
+our @EXPORT = qw(createRequestingCircuit createEstablishedCircuit createOfflineCircuit createTask
+                 createOfflineBandwidth createRunningBandwidth createUpdatingBandwidth);
 
 sub createRequestingCircuit {
     my ($req_time, $backend, $from, $to, $life, $req_bandwidth) = @_;
@@ -49,6 +51,44 @@ sub createOfflineCircuit {
     return $testCircuit;
 }
 
+sub createOfflineBandwidth {
+    my ($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax) = @_;
+
+    $lastUpdated = $lastUpdated || &mytimeofday();
+    $from = $from || 'T2_ANSE_GENEVA';
+    $to = $to || 'T2_ANSE_AMSTERDAM';
+    $backend = $backend || 'Dummy';
+
+    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new();
+    $testBandwidth->initResource($backend, $from, $to);
+    $testBandwidth->{LAST_STATUS_CHANGE} = $lastUpdated;
+    $testBandwidth->{BANDWIDTH_STEP} = $bStep if defined $bStep;
+    $testBandwidth->{BANDWIDTH_MIN} = $bMin if defined $bMin;
+    $testBandwidth->{BANDWIDTH_MAX} = $bMax if defined $bMax;
+    
+
+    return $testBandwidth;
+}
+
+sub createUpdatingBandwidth {
+    my ($lastUpdated, $backend, $from, $to, $bandwidth, $bStep, $bMin, $bMax) = @_;
+    
+    $bandwidth = $bandwidth || 500;
+
+    my $testBandwidth = createOfflineBandwidth($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax);
+    $testBandwidth->registerUpdateRequest($bandwidth);
+    
+    return $testBandwidth;
+}
+
+sub createRunningBandwidth {
+    my ($lastUpdated, $backend, $from, $to, $bandwidth, $bStep, $bMin, $bMax) = @_;
+    
+    my $testBandwidth = createUpdatingBandwidth($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax);
+    $testBandwidth->registerUpdateSuccessful();
+    
+    return $testBandwidth;
+}
 
 sub createTask {
     my ($startTime, $size, $jobsize, $jobDuration) = @_;

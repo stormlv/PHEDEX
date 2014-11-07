@@ -52,6 +52,7 @@ sub testInitialisation {
     is($resource->{NODE_B}, "Node_B", "$msg: Initialisation ok (NodeB matches)");
     is($resource->{BIDIRECTIONAL}, 1, "$msg: Initialisation ok (BIDIRECTIONAL matches)");
     is($resource->{NAME}, "Node_A-Node_B", "$msg: Initialisation ok (path name matches)");
+    is($resource->{SCOPE}, "GENERIC", "$msg: Initialisation ok (scope matches)");
     ok($resource->{LAST_STATUS_CHANGE}, "$msg: Initialisation ok (remembered last status change)");
 }
 

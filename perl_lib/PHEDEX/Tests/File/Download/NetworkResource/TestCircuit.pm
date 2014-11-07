@@ -63,15 +63,16 @@ sub testHelperMethods {
 
     is($testCircuit1->{NAME}, 'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2', "$msg: Name was set correctly");
 
-    # Test getSaveName
-    ok($testCircuit1->getSaveName() =~ /requested/, "$msg: getSaveName works as it should on a requested circuit");
-    ok($testCircuit2->getSaveName() =~ /online/, "$msg: getSaveName works as it should on a established circuit");
-    ok($testCircuit6->getSaveName() =~ /offline/, "$msg: getSaveName works as it should on a offline circuit");
+    # Test getSavePaths
+    ok($testCircuit1->getSavePaths() =~ /requested/, "$msg: getSavePaths works as it should on a requested circuit");
+    ok($testCircuit2->getSavePaths() =~ /online/, "$msg: getSavePaths works as it should on a established circuit");
+    ok($testCircuit6->getSavePaths() =~ /offline/, "$msg: getSavePaths works as it should on a offline circuit");
 }
 
 # Test consists of creating a circuit then attempting to save it
 # while it is in different states. saveState should detect inconsistencies or errors
 # and not attempt any save
+# TODO: Move this to NetworkResource test and only test additional features
 sub testSaveErrorHandling {
     my $msg = "TestCircuit->testSaveErrorHandling";
     
@@ -101,6 +102,7 @@ sub testSaveErrorHandling {
 }
 
 # Test consists of creating circuits, saving them, reopening then verifying that the two match
+# TODO: Move this to NetworkResource test and only test additional features
 sub testSaveOpenObject{
     my $msg = "TestCircuit->testSaveOpenObject";
     
@@ -108,7 +110,7 @@ sub testSaveOpenObject{
 
     # save a circuit which is 'in request'
     my $testCircuit1 = createRequestingCircuit();
-    my $saveName1 = $testCircuit1->getSaveName();
+    my $saveName1 = $testCircuit1->getSavePaths();
 
     is($testCircuit1->saveState(), OK, "$msg: Successfully saved circuit in request state");
     ok(-e $saveName1, "$msg: Tested that save file exists");
@@ -119,7 +121,7 @@ sub testSaveOpenObject{
 
     # save a circuit which is 'established'
     my $testCircuit2 = createEstablishedCircuit();
-    my $saveName2 = $testCircuit2->getSaveName();
+    my $saveName2 = $testCircuit2->getSavePaths();
 
     is($testCircuit2->saveState(), OK, "$msg: Successfully saved circuit in established state");
     ok(-e $saveName2, "$msg: Tested that save file exists");
@@ -134,10 +136,11 @@ sub testSaveOpenObject{
     my $time = formattedTime($testCircuit3->{LAST_STATUS_CHANGE});
     is($testCircuit3->saveState(), OK, "$msg: Successfully saved circuit in offline state");
 
-    ok(-e $testCircuit3->getSaveName(), "$msg: Tested that save file exists");
+    ok(-e $testCircuit3->getSavePaths(), "$msg: Tested that save file exists");
 }
 
 # Test consists of creating circuits, saving them then calling removeState on them (which should remove them from disk)
+# TODO: Move this to NetworkResource test and only test additional features
 sub testRemoveStateFiles {
     my $msg = "TestCircuit->testRemoveStateFiles";
     
@@ -146,29 +149,29 @@ sub testRemoveStateFiles {
     # remove a state from a circuit which is 'in request'
     my $testCircuit = createRequestingCircuit();
     $testCircuit->saveState();
-    ok(-e $testCircuit->getSaveName(), "$msg: State file exists in /requested");
+    ok(-e $testCircuit->getSavePaths(), "$msg: State file exists in /requested");
     is($testCircuit->removeState(), OK, "$msg: State file removed from /requested");
-    is(-e $testCircuit->getSaveName(), undef, "$msg: State file no longer exists in /requested");
+    is(-e $testCircuit->getSavePaths(), undef, "$msg: State file no longer exists in /requested");
 
     # remove a state from a circuit which is 'established'
     my $testCircuit2 = createEstablishedCircuit();
     $testCircuit2->saveState();
-    ok(-e $testCircuit2->getSaveName(), "$msg: State file exists in /established");
+    ok(-e $testCircuit2->getSavePaths(), "$msg: State file exists in /established");
     is($testCircuit2->removeState(), OK, "$msg: State file removed from /established");
-    is(-e $testCircuit2->getSaveName(), undef, "$msg: State file no longer exists in /established");
+    is(-e $testCircuit2->getSavePaths(), undef, "$msg: State file no longer exists in /established");
 
     # remove a state from a circuit which is "offline"
     my $testCircuit3 = createEstablishedCircuit();
     $testCircuit3->registerTakeDown();
     $testCircuit3->saveState();
-    ok(-e $testCircuit3->getSaveName(), "$msg: State file exists in /offline");
+    ok(-e $testCircuit3->getSavePaths(), "$msg: State file exists in /offline");
     is($testCircuit3->removeState(), OK, "$msg: State file removed from /offline");
-    is(-e $testCircuit3->getSaveName(), undef, "$msg: State file no longer exists in /offline");
+    is(-e $testCircuit3->getSavePaths(), undef, "$msg: State file no longer exists in /offline");
 
     # attempt (and fail) to remove a state for which there's no file
     my $testCircuit4 = createEstablishedCircuit();
     $testCircuit4->saveState();
-    unlink $testCircuit4->getSaveName();
+    unlink $testCircuit4->getSavePaths();
     is($testCircuit4->removeState(), ERROR_GENERIC, "$msg: cannot find saved state");
 }
 

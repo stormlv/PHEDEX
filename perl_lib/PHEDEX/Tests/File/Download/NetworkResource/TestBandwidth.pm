@@ -45,10 +45,10 @@ sub testHelperMethods {
 
     is($bandwidth1->{NAME}, 'T2_ANSE_GENEVA-to-T2_ANSE_AMSTERDAM', "$msg: Name was set correctly");
 
-    # Test getSaveName
-    ok($bandwidth1->getSaveName() =~ /offline/, "$msg: getSaveName works as it should on an offline bandwidth");
-    ok($bandwidth2->getSaveName() =~ /offline/, "$msg: getSaveName works as it should on an updating bandwidth");
-    ok($bandwidth3->getSaveName() =~ /online/, "$msg: getSaveName works as it should on a running bandwidth");
+    # Test getSavePaths
+    ok($bandwidth1->getSavePaths() =~ /offline/, "$msg: getSavePaths works as it should on an offline bandwidth");
+    ok($bandwidth2->getSavePaths() =~ /offline/, "$msg: getSavePaths works as it should on an updating bandwidth");
+    ok($bandwidth3->getSavePaths() =~ /online/, "$msg: getSavePaths works as it should on a running bandwidth");
     
     # Test validateBandwidth
     is($bandwidth3->validateBandwidth(501.2), ERROR_GENERIC, "$msg: validateBandwidth rejects value not a multiple of step size");

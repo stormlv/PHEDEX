@@ -49,10 +49,12 @@ sub setupResourceManager {
 
     # Clear the test area if there's anything there
     File::Path::rmtree("$baseLocation".'/data', 1, 1) if (-d "$baseLocation".'/data');
-    File::Path::make_path("$baseLocation".'/data/requested', {error => \my $err});
-    File::Path::make_path("$baseLocation".'/data/online', {error => \$err});
-    File::Path::make_path("$baseLocation".'/data/offline', {error => \$err});
-    File::Path::make_path("$baseLocation".'/logs', {error => \$err});
+    File::Path::make_path("$baseLocation/data/circuits/requested", {error => \my $err});
+    File::Path::make_path("$baseLocation/data/circuits/online", {error => \$err});
+    File::Path::make_path("$baseLocation/data/circuits/offline", {error => \$err});
+    File::Path::make_path("$baseLocation/data/bod/offline", {error => \$err});
+    File::Path::make_path("$baseLocation/data/bod/online", {error => \$err});
+    File::Path::make_path("$baseLocation/logs", {error => \$err});
 
     $backend = 'Dummy' if ! defined $backend;
     $backendArgs = {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'} if ! defined $backendArgs;

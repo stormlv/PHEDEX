@@ -129,7 +129,7 @@ sub iCheckRequest {
     ok(defined $circuit, "stress test / iCheckRequest - Circuit exists in circuit manager");
     is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "stress test / iCheckRequest - Circuit is in requesting state in circuit manager");
 
-    my $path = $circuit->getSaveName();
+    my $path = $circuit->getSavePaths();
     ok($path  =~ m/requested/ && -e $path, "stress test / iCheckRequest - Circuit (in requesting state) exists on disk as well");
 
     # POE alarms test
@@ -145,7 +145,7 @@ sub iCheckEstablished {
     ok(defined $circuit, "stress test / iCheckEstablished - Circuit exists in circuit manager");
     is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE,"stress test / iCheckEstablished - Circuit is in established state in circuit manager");
 
-    my $path = $circuit->getSaveName();
+    my $path = $circuit->getSavePaths();
     ok($path  =~ m/online/ && -e $path, "stress test / iCheckEstablished - Circuit (in established state) exists on disk as well");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
@@ -160,7 +160,7 @@ sub iCheckTeardown {
 
     is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE,"stress test / iCheckTeardown - Circuit is in offline state in circuit manager");
 
-    my $path = $circuit->getSaveName();
+    my $path = $circuit->getSavePaths();
     ok($path  =~ m/offline/ && -e $path, "stress test / iCheckTeardown - Circuit (in offline state) exists on disk as well");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
@@ -169,7 +169,7 @@ sub iCheckTeardown {
 sub iCheckRequestFailure {
     my ($circuitManager, $circuit, $linkName) = @_[ARG0, ARG1, ARG2];
 
-    my $path = $circuit->getSaveName();
+    my $path = $circuit->getSavePaths();
 
     # Circuit related tests
     is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "stress test / iCheckRequestFailure - Circuit is in offline state");

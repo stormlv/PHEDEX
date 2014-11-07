@@ -51,77 +51,105 @@ sub testHelperMethods {
 
 # Test consists of creating 3 malformed circuits in each of the 3 locations in /circuits
 # that the circuit manager should remove
-sub testVSCMalformedCircuits {
-
+sub testVSCMalformedResources {
     ### Setup circuit manager
-    my ($circuitManager, $session) = setupResourceManager(0.1, 'malformed-circuits.log', HOUR);
-    $circuitManager->Logmsg('Testing event verifyStateConsistency / removal of malformed circuits');
+    my ($resourceManager, $session) = setupResourceManager(0.1, 'malformed-resources.log', HOUR);
+    $resourceManager->Logmsg('Testing event verifyStateConsistency / removal of malformed circuits');
 
     ### Setup malformed circuits
-    my $locations = ['requested', 'online', 'offline'];
-        foreach my $location (@{$locations}) {
-            File::Path::make_path("$baseLocation"."/data/circuits/$location", {error => \my $err});
-            my $fh = new IO::File "> $baseLocation"."/data/circuits/$location/malformed_circuit";
-            if (defined $fh) {
-                print $fh "This is malformed file\n";
-                $fh->close();
-            }
+    my $locations = ['circuits/requested', 'circuits/online', 'circuits/offline', 'bod/online', 'bod/offline'];
+    
+    ### Go through each locations and create a file with some text in it
+    foreach my $location (@{$locations}) {
+        my $path = "$baseLocation"."/data/$location";
+        File::Path::make_path($path, {error => \my $err});
+        my $fh = new IO::File "> $path/malformed_resource";
+        if (defined $fh) {
+            print $fh "This is malformed file\n";
+            $fh->close();
         }
+        ok(-e "$path/malformed_resource", "TestNormalFunctionality->verifyStateConsistency - malformed file created in $path");
+    }
 
     ### Run POE
     POE::Kernel->run();
 
-    ### The three malformed circuits should be removed
-    ok(!-e '$baseLocation"."/data/circuits/requested/malformed_circuit', "TestNormalFunctionality->verifyStateConsistency - malformed file in /requested was removed");
-    ok(!-e '$baseLocation"."/data/circuits/online/malformed_circuit', "TestNormalFunctionality->verifyStateConsistency - malformed file in /online was removed");
-    ok(!-e '$baseLocation"."/data/circuits/offline/malformed_circuit', "TestNormalFunctionality->verifyStateConsistency - malformed file in /offline was removed");
-
-    $circuitManager->Logmsg('Testing event verifyStateConsistency / removal of malformed circuits');
+    ### The malformed resources should be removed
+    ok(!-e '$baseLocation"."/data/circuits/requested/malformed_resource', "TestNormalFunctionality->testVSCMalformedResources - malformed file in circuits/requested was removed");
+    ok(!-e '$baseLocation"."/data/circuits/online/malformed_resource', "TestNormalFunctionality->testVSCMalformedResources - malformed file in circuits/online was removed");
+    ok(!-e '$baseLocation"."/data/circuits/offline/malformed_resource', "TestNormalFunctionality->testVSCMalformedResources - malformed file in circuits/offline was removed");
+    ok(!-e '$baseLocation"."/data/bod/offline/malformed_resource', "TestNormalFunctionality->testVSCMalformedResources - malformed file in bod/offline was removed");
+    ok(!-e '$baseLocation"."/data/bod/online/malformed_resource', "TestNormalFunctionality->testVSCMalformedResources - malformed file in bod/online was removed");
 }
 
 # Test consists of creating 3 circuits in each of the 3 locations in /circuits
 # that the circuit manager should move to their correct locations
-sub testVSCMisplacedCircuits {
+sub testVSCMisplacedResources {
 
     ### Setup circuit manager
-    my ($circuitManager, $session) = setupResourceManager(0.1, 'misplaced-circuits.log', HOUR);
-    $circuitManager->Logmsg('Testing event verifyStateConsistency / relocation of misplaced circuits circuits');
+    my ($circuitManager, $session) = setupResourceManager(0.1, 'misplaced-resiyrces.log', HOUR);
+    $circuitManager->Logmsg('Testing event verifyStateConsistency / relocation of misplaced resources');
 
     my $time = &mytimeofday();
 
+    my $pathToCircuits = "$baseLocation".'/data/circuits';
+    my $pathToBandwidth = "$baseLocation".'/data/bod';
+    
     ### Prepare misplaced circuits
     # Save and move requested circuit to online
-    my $misplacedRequest = createRequestingCircuit($time, 'WDummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $misplacedRequest->{STATE_DIR} = "$baseLocation".'/data/circuits';
-    $misplacedRequest->saveState();
-    my $fileReq = $misplacedRequest->{NAME}.'-'.formattedTime($time);
-    move "$baseLocation"."/data/circuits/requested/$fileReq", "$baseLocation"."/data/circuits/online/$fileReq".'req.moved';
-    ok(!-e "$baseLocation"."/data/circuits/requested/$fileReq", "TestNormalFunctionality->verifyStateConsistency - moved requested circuit from its folder");
+    my $misplacedCircuitRequest = createRequestingCircuit($time, 'WDummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
+    $misplacedCircuitRequest->{STATE_DIR} = $pathToCircuits;
+    $misplacedCircuitRequest->saveState();
+    my (undef, $fileReq, undef) = $misplacedCircuitRequest->getSavePaths();
+    ok(-e "$pathToCircuits/requested/$fileReq", "TestNormalFunctionality->testVSCMisplacedResources - circuit is in its folder");
+    move "$pathToCircuits/requested/$fileReq", "$pathToCircuits/online/$fileReq".'req.moved';
+    ok(!-e "$pathToCircuits/requested/$fileReq", "TestNormalFunctionality->testVSCMisplacedResources - moved requested circuit from its folder");
 
     # Save and move establised circuit to offline
-    my $misplacedEstablished = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-    $misplacedEstablished->{STATE_DIR} = "$baseLocation".'/data/circuits';
-    $misplacedEstablished->saveState();
-    my $fileEst = $misplacedEstablished->{NAME}.'-'.formattedTime($time);
-    move "$baseLocation"."/data/circuits/online/$fileEst", "$baseLocation"."/data/circuits/offline/$fileEst".'est.moved';
-    ok(!-e "$baseLocation"."/data/circuits/online/$fileEst", "TestNormalFunctionality->verifyStateConsistency - moved online circuit from its folder");
+    my $misplacedCircuitEstablished = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'WDummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
+    $misplacedCircuitEstablished->{STATE_DIR} = $pathToCircuits;
+    $misplacedCircuitEstablished->saveState();
+    my (undef, $fileEst, undef)  = $misplacedCircuitEstablished->getSavePaths();
+    ok(-e "$pathToCircuits/online/$fileEst", "TestNormalFunctionality->testVSCMisplacedResources - circuit is in its folder");
+    move "$pathToCircuits/online/$fileEst", "$pathToCircuits/offline/$fileEst".'est.moved';
+    ok(!-e "$pathToCircuits/online/$fileEst", "TestNormalFunctionality->testVSCMisplacedResources - moved online circuit from its folder");
 
     # Save and move offline circuit to online
-    my $misplacedOffline = createOfflineCircuit($time);
-    $misplacedOffline->{BOOKING_BACKEND} = 'WDummy';
-    $misplacedOffline->{STATE_DIR} = "$baseLocation".'/data/circuits';
-    $misplacedOffline->saveState();
-    my $fileOff = $misplacedOffline->{NAME}.'-'.formattedTime($time);
-    move "$baseLocation"."/data/circuits/offline/$fileOff", "$baseLocation"."/data/circuits/requested/$fileOff".'off.moved';
-    ok(!-e "$baseLocation"."/data/circuits/offline/$fileOff", "TestNormalFunctionality->verifyStateConsistency - moved offline circuit from its folder");
+    my $misplacedCircuitOffline = createOfflineCircuit($time);
+    $misplacedCircuitOffline->{STATE_DIR} = $pathToCircuits;
+    $misplacedCircuitOffline->saveState();
+    my (undef, $fileOff, undef) = $misplacedCircuitOffline->getSavePaths();
+    ok(-e "$pathToCircuits/offline/$fileOff", "TestNormalFunctionality->testVSCMisplacedResources - circuit is in its folder");
+    move "$pathToCircuits/offline/$fileOff", "$pathToCircuits/requested/$fileOff".'off.moved';
+    ok(!-e "$pathToCircuits/offline/$fileOff", "TestNormalFunctionality->testVSCMisplacedResources - moved offline circuit from its folder");
 
+    ## Prepare misplaced bandwidth
+    my $misplacedBodOffline = createOfflineBandwidth($time);
+    $misplacedBodOffline->{STATE_DIR} = $pathToBandwidth;
+    $misplacedBodOffline->saveState();
+    my (undef, $fileBodOff, undef) = $misplacedBodOffline->getSavePaths();
+    ok(-e "$pathToBandwidth/offline/$fileBodOff", "TestNormalFunctionality->testVSCMisplacedResources - bandwidth is in its folder");
+    move "$pathToBandwidth/offline/$fileBodOff", "$pathToBandwidth/online/$fileBodOff".'off.moved';
+    ok(!-e "$pathToBandwidth/offline/$fileBodOff", "TestNormalFunctionality->testVSCMisplacedResources - moved offline bandwidth from its folder");
+    
+    my $misplacedBodOnline = createRunningBandwidth($time);
+    $misplacedBodOnline->{STATE_DIR} = $pathToBandwidth;
+    $misplacedBodOnline->saveState();
+    my (undef, $fileBodOn, undef) = $misplacedBodOnline->getSavePaths();
+    ok(-e "$pathToBandwidth/online/$fileBodOn", "TestNormalFunctionality->testVSCMisplacedResources - bandwidth is in its folder");
+    move "$pathToBandwidth/online/$fileBodOn", "$pathToBandwidth/offline/$fileBodOn".'off.moved';
+    ok(!-e "$pathToBandwidth/online/$fileBodOn", "TestNormalFunctionality->testVSCMisplacedResources - moved online bandwidth from its folder");
+    
     ### Run POE
     POE::Kernel->run();
 
-    ### The three misplaced circuits should now be in their correct folders
-    ok(-e $misplacedRequest->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - misplaced requested circuit back in its folder");
-    ok(-e $misplacedEstablished->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - misplaced established circuit back in its folder");
-    ok(-e $misplacedOffline->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - misplaced offline circuit back in its folder");
+    ### The misplaced resources should now be in their correct folders
+    ok(-e $misplacedCircuitRequest->getSavePaths(), "TestNormalFunctionality->testVSCMisplacedResources - misplaced requested circuit back in its folder");
+    ok(-e $misplacedCircuitEstablished->getSavePaths(), "TestNormalFunctionality->testVSCMisplacedResources - misplaced established circuit back in its folder");
+    ok(-e $misplacedCircuitOffline->getSavePaths(), "TestNormalFunctionality->testVSCMisplacedResources - misplaced offline circuit back in its folder");
+
+    ok(-e $misplacedBodOffline->getSavePaths(), "TestNormalFunctionality->testVSCMisplacedResources - misplaced requested circuit back in its folder");
+    ok(-e $misplacedBodOnline->getSavePaths(), "TestNormalFunctionality->testVSCMisplacedResources - misplaced established circuit back in its folder");
 }
 
 # Test consists of creating usable circuits which cannot be handled by the circuit manager
@@ -200,8 +228,8 @@ sub testVSCRemoveSimilarCircuits {
     ### Run POE
     POE::Kernel->run();
 
-    ok(!-e $onDiskCircuit->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously on disk has been removed");
-    ok(-e $inMemoryCircuit->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has been resaved");
+    ok(!-e $onDiskCircuit->getSavePaths(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously on disk has been removed");
+    ok(-e $inMemoryCircuit->getSavePaths(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has been resaved");
     is($circuitManager->{CIRCUITS}{$inMemoryCircuit->{NAME}}{ID}, $inMemoryCircuit->{ID} , "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has not changed");
 }
 
@@ -223,9 +251,9 @@ sub testVSCHandleCircuitRequest {
     ### Run POE
     POE::Kernel->run();
 
-    ok(!-e $request->getSaveName(), "TestNormalFunctionality->verifyStateConsistency - circuit request no longer in /requested");
+    ok(!-e $request->getSavePaths(), "TestNormalFunctionality->verifyStateConsistency - circuit request no longer in /requested");
 
-    my $partialID = substr($request->{ID}, 1, 8);
+    my $partialID = substr($request->{ID}, 1, 7);
 
     my $file ="$baseLocation".'/data/circuits/offline/'.$request->{NAME}."-$partialID-".formattedTime($time);
     ok(-e $file, "TestNormalFunctionality->verifyStateConsistency - circuit request marked as offline now");
@@ -313,8 +341,8 @@ sub testVSCOfflineCircuits {
 
 # This is just to have everything in one place for tests of one event
 sub testVerifyStateConsistency {
-    testVSCMalformedCircuits();
-    testVSCMisplacedCircuits();
+    testVSCMalformedResources();
+    testVSCMisplacedResources();
     testVSCUnclaimedCircuits();
     testVSCSkipIdenticalCircuits();
     testVSCRemoveSimilarCircuits();
@@ -394,8 +422,8 @@ sub testRCCreatesRequests {
 
         my $c1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
         my $c2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
-        $partialIDc1 = substr($c1->{ID}, 1, 8);
-        $partialIDc2 = substr($c2->{ID}, 1, 8);
+        $partialIDc1 = substr($c1->{ID}, 1, 7);
+        $partialIDc2 = substr($c2->{ID}, 1, 7);
 
         my $fileReq1 = $baseLocation."/data/circuits/requested/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$partialIDc1-".formattedTime($time);
         my $fileReq2 = $baseLocation."/data/circuits/requested/T2_ANSE_CERN_2-to-T2_ANSE_CERN_1-$partialIDc2-".formattedTime($time);
@@ -500,7 +528,7 @@ sub testRCExpiringCircuitRequests {
 
     my @offKeys = keys %{$circuitManager->{CIRCUITS_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}};
 
-    my $circuitID = substr($offKeys[0], 1, 8);
+    my $circuitID = substr($offKeys[0], 1, 7);
     my $fileOff = $baseLocation."/data/circuits/offline/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$circuitID-".formattedTime($time + 0.1);
     ok(-e $fileOff, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired");
     ok(!$circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was removed from CIRCUITS");
@@ -538,8 +566,8 @@ sub testTransferFailure {
         my $circuit1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
         my $circuit2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
 
-        $partialIDc1 = substr($circuit1->{ID}, 1, 8);
-        $partialIDc2 = substr($circuit2->{ID}, 1, 8);
+        $partialIDc1 = substr($circuit1->{ID}, 1, 7);
+        $partialIDc2 = substr($circuit2->{ID}, 1, 7);
 
         $circuit1->{VERBOSE} = 0;
         $circuit2->{VERBOSE} = 0;
