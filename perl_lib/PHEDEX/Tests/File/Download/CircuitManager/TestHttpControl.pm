@@ -51,11 +51,11 @@ sub testHttpCircuitLifecycle {
         my $circuitManager = $_[ARG0];
 
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
-        my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+        my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
         is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "circuit manager / requestCircuit - circuit status in circuit manager is correct");
 
-        my $partialID = substr($circuit->{ID}, 1, 8);
+        my $partialID = substr($circuit->{ID}, 1, 7);
         my $time = $circuit->{REQUEST_TIME};
         my $fileReq = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($time);
 
@@ -73,7 +73,7 @@ sub testHttpCircuitLifecycle {
         
         $kernel->state(iTestGetInfoCircuits => \&iTestGetInfoCircuits);
         
-        $userAgent->httpRequest("GET", "http://localhost:8080/getInfo", {REQUEST => "CIRCUITS"}, $session->postback("iTestGetInfoCircuits"));
+        $userAgent->httpRequest("GET", "http://localhost:8080/getInfo", {REQUEST => "RESOURCES"}, $session->postback("iTestGetInfoCircuits"));
     }
 
     sub iTestGetInfoCircuits {
@@ -111,12 +111,12 @@ sub testHttpCircuitLifecycle {
         my $circuitManager = $_[ARG0];
 
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
-        my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
+        my $circuitID = $circuitManager->{RESOURCE_HISTORY}{$linkName};
         my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
         is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "circuit manager / teardownCircuit - circuit status in circuit manager is correct");
 
-        my $partialID = substr($circuit->{ID}, 1, 8);
+        my $partialID = substr($circuit->{ID}, 1, 7);
         my $establishedtime = $circuit->{ESTABLISHED_TIME};
         my $offlinetime = $circuit->{LAST_STATUS_CHANGE};
 

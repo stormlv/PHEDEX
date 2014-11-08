@@ -10,6 +10,7 @@ use List::Util qw(min);
 my %params =
 	(
         AGENT_TRANSLATION           =>  {},         # Stores the PhEDEx names to IDC ref
+        SUPPORTED_RESOURCE          =>  undef,      # Set this in extending class
 	);
 		
 sub new

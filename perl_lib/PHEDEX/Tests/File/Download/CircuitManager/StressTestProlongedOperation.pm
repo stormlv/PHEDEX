@@ -124,7 +124,7 @@ sub iMainLoop {
 sub iCheckRequest {
     my ($circuitManager, $linkName) = @_[ARG0, ARG2];
 
-    my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+    my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
     ok(defined $circuit, "stress test / iCheckRequest - Circuit exists in circuit manager");
     is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "stress test / iCheckRequest - Circuit is in requesting state in circuit manager");
@@ -155,8 +155,8 @@ sub iCheckEstablished {
 sub iCheckTeardown {
     my ($circuitManager, $circuit, $linkName) = @_[ARG0, ARG1, ARG2];
 
-    ok(!defined $circuitManager->{CIRCUITS}{$linkName}, "stress test / iCheckTeardown - Circuit doesn't exist in circuit manager anymore");
-    ok(defined $circuitManager->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}}, "stress test / iCheckTeardown - Circuit exists in circuit manager history");
+    ok(!defined $circuitManager->{RESOURCES}{$linkName}, "stress test / iCheckTeardown - Circuit doesn't exist in circuit manager anymore");
+    ok(defined $circuitManager->{RESOURCE_HISTORY}{$linkName}{$circuit->{ID}}, "stress test / iCheckTeardown - Circuit exists in circuit manager history");
 
     is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE,"stress test / iCheckTeardown - Circuit is in offline state in circuit manager");
 
@@ -173,8 +173,8 @@ sub iCheckRequestFailure {
 
     # Circuit related tests
     is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "stress test / iCheckRequestFailure - Circuit is in offline state");
-    ok(!defined $circuitManager->{CIRCUITS}{$linkName},"stress test / iCheckRequestFailure - Circuit is no longer in CIRCUITS");
-    ok($circuitManager->{CIRCUITS_HISTORY}{$linkName}{$circuit->{ID}},"stress test / iCheckRequestFailure - Circuit is now in CIRCUITS_HISTORY");
+    ok(!defined $circuitManager->{RESOURCES}{$linkName},"stress test / iCheckRequestFailure - Circuit is no longer in RESOURCES");
+    ok($circuitManager->{RESOURCE_HISTORY}{$linkName}{$circuit->{ID}},"stress test / iCheckRequestFailure - Circuit is now in RESOURCE_HISTORY");
     ok($path  =~ m/offline/ && -e $path, "stress test / iCheckRequestFailure - Circuit (in offline state) exists on disk as well");
 
     my $failedReq = $circuit->getFailedRequest();
@@ -228,9 +228,9 @@ sub iCheckHistoryTrimming {
 
     my ($olderThanNeeded, @circuitsOffline);
 
-    &getdir($circuitManager->{CIRCUITDIR}."/offline", \@circuitsOffline);
+    &getdir($circuitManager->{STATE_DIR}."/offline", \@circuitsOffline);
 
-    ok(scalar @{$circuitManager->{CIRCUITS_HISTORY_QUEUE}} <=  $circuitManager->{MAX_HISTORY_SIZE}, "There are no more than $circuitManager->{MAX_HISTORY_SIZE} circuits in HISTORY");
+    ok(scalar @{$circuitManager->{RESOURCE_HISTORY_QUEUE}} <=  $circuitManager->{MAX_HISTORY_SIZE}, "There are no more than $circuitManager->{MAX_HISTORY_SIZE} circuits in HISTORY");
     ok(scalar @circuitsOffline <=  $circuitManager->{MAX_HISTORY_SIZE}, "There are no more than $circuitManager->{MAX_HISTORY_SIZE} circuits in HISTORY folder");
 
     POE::Kernel->delay(\&iCheckHistoryTrimming => $tHistoryTrimming, $circuitManager);

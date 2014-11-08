@@ -23,30 +23,39 @@ use PHEDEX::Tests::File::Download::Helpers::SessionCreation;
 sub testHelperMethods {
     my $circuitManager = PHEDEX::File::Download::Circuits::ResourceManager->new(BACKEND_TYPE => 'Dummy',
                                                                                 BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
-                                                                                CIRCUITDIR => "$baseLocation".'/data',
+                                                                                STATE_DIR => "$baseLocation".'/data',
                                                                                 VERBOSE => 1);
     $circuitManager->Logmsg('Testing helper methods');
 
     my $time = &mytimeofday();
 
-    # testing checkCircuit
+    # testing getManagedResource
     my $requestingCircuit = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
-    $circuitManager->{CIRCUITS}{$requestingCircuit->{NAME}} = $requestingCircuit;
-
     my $establishedCircuit = createEstablishedCircuit($time, '192.168.0.1', '192.168.0.2', undef, $time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');
-    $circuitManager->{CIRCUITS}{$establishedCircuit->{NAME}} = $establishedCircuit;
+    my $onlineBandwidth = createRunningBandwidth($time, 'Dummy', 'T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_1');
+    my $updatingBandiwdth = createUpdatingBandwidth($time, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev');
+    
+    $circuitManager->{RESOURCES}{$requestingCircuit->{NAME}} = $requestingCircuit;
+    $circuitManager->{RESOURCES}{$establishedCircuit->{NAME}} = $establishedCircuit;
+    $circuitManager->{RESOURCES}{$onlineBandwidth->{NAME}} = $onlineBandwidth;
+    $circuitManager->{RESOURCES}{$updatingBandiwdth->{NAME}} = $updatingBandiwdth;
+    
+    
+    ok(!$circuitManager->getManagedResource('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'),  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
+    ok(!$circuitManager->getManagedResource('T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'),  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
+    is_deeply($circuitManager->getManagedResource('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1'), $establishedCircuit ,  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
+    is_deeply($circuitManager->getManagedResource('T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_1'), $onlineBandwidth ,  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
+    ok(!$circuitManager->getManagedResource('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', BOD),  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
+    ok(!$circuitManager->getManagedResource('T2_ANSE_CERN_Dev', 'T2_ANSE_CERN_1', CIRCUIT),  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
 
-    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', STATUS_CIRCUIT_REQUESTING), $requestingCircuit ,  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
-    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', STATUS_CIRCUIT_ONLINE), 'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
-    is_deeply($circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', STATUS_CIRCUIT_ONLINE), $establishedCircuit ,  'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
-    ok(!$circuitManager->checkCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_1', STATUS_CIRCUIT_REQUESTING), 'TestNormalFunctionality->check helper methods: checkCircuit works correctly');
-
-    # testing canRequestCircuit
+    # testing canRequestResource
     $circuitManager->{LINKS_BLACKLISTED}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_Dev'} = 'data';
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_Dev'), CIRCUIT_AVAILABLE, 'TestNormalFunctionality->check helper methods: canRequestCircuit says we can request a circuit');
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2'), CIRCUIT_ALREADY_REQUESTED, 'TestNormalFunctionality->check helper methods: canRequestCircuit says we cannot request a circuit which is already in CIRCUITS');
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev'), CIRCUIT_BLACKLISTED, 'TestNormalFunctionality->check helper methods: canRequestCircuit says we cannot request a circuit on a blacklisted link');
-    is($circuitManager->canRequestCircuit('T2_ANSE_CERN_3', 'T2_ANSE_CERN_Dev'), CIRCUIT_UNAVAILABLE, 'TestNormalFunctionality->check helper methods: canRequestCircuit says backend cannot request a circuit on provided link');
+    
+    is($circuitManager->canRequestResource('T2_ANSE_CERN_0', 'T2_ANSE_CERN_Dev', CIRCUIT), RESOURCE_REQUEST_POSSIBLE , 'TestNormalFunctionality->check helper methods: canRequestResource says we can request a circuit');
+    is($circuitManager->canRequestResource('T2_ANSE_CERN_0', 'T2_ANSE_CERN_Dev', BOD), RESOURCE_TYPE_UNSUPPORTED, 'TestNormalFunctionality->check helper methods: canRequestResource says we cannot request a bandwidth');
+    is($circuitManager->canRequestResource('T2_ANSE_CERN_1', 'T2_ANSE_CERN_2', CIRCUIT), RESOURCE_ALREADY_EXISTS, 'TestNormalFunctionality->check helper methods: canRequestCircuit says we cannot request a circuit which is already in RESOURCES');
+    is($circuitManager->canRequestResource('T2_ANSE_CERN_2', 'T2_ANSE_CERN_Dev', CIRCUIT), LINK_BLACKLISTED, 'TestNormalFunctionality->check helper methods: canRequestCircuit says we cannot request a circuit on a blacklisted link');
+    is($circuitManager->canRequestResource('T2_ANSE_CERN_3', 'T2_ANSE_CERN_Dev', CIRCUIT), LINK_UNSUPPORTED, 'TestNormalFunctionality->check helper methods: canRequestCircuit says backend cannot request a circuit on provided link');
 }
 
 # Test consists of creating 3 malformed circuits in each of the 3 locations in /circuits
@@ -179,7 +188,7 @@ sub testVSCUnclaimedCircuits {
     ### Run POE
     POE::Kernel->run();
 
-    ok(!keys %{$circuitManager->{CIRCUITS}}, "TestNormalFunctionality->verifyStateConsistency - unclaimed circuits were not used in the backend");
+    ok(!keys %{$circuitManager->{RESOURCES}}, "TestNormalFunctionality->verifyStateConsistency - unclaimed circuits were not used in the backend");
 }
 
 # Test consists of creating a circuit then adding it in memory
@@ -196,7 +205,7 @@ sub testVSCSkipIdenticalCircuits {
     $existingCircuit->{STATE_DIR} = "$baseLocation".'/data/circuits';
     $existingCircuit->saveState();
 
-    $circuitManager->{CIRCUITS}{$existingCircuit->{NAME}} = $existingCircuit;
+    $circuitManager->{RESOURCES}{$existingCircuit->{NAME}} = $existingCircuit;
 
     ### Run POE
     POE::Kernel->run();
@@ -223,14 +232,14 @@ sub testVSCRemoveSimilarCircuits {
     my $inMemoryCircuit = createEstablishedCircuit($time - 10, '192.168.0.1', '192.168.0.2', undef, $time - 10, 'Dummy', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
     $inMemoryCircuit->{STATE_DIR} = "$baseLocation".'/data/circuits';
 
-    $circuitManager->{CIRCUITS}{$inMemoryCircuit->{NAME}} = $inMemoryCircuit;
+    $circuitManager->{RESOURCES}{$inMemoryCircuit->{NAME}} = $inMemoryCircuit;
 
     ### Run POE
     POE::Kernel->run();
 
     ok(!-e $onDiskCircuit->getSavePaths(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously on disk has been removed");
     ok(-e $inMemoryCircuit->getSavePaths(), "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has been resaved");
-    is($circuitManager->{CIRCUITS}{$inMemoryCircuit->{NAME}}{ID}, $inMemoryCircuit->{ID} , "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has not changed");
+    is($circuitManager->{RESOURCES}{$inMemoryCircuit->{NAME}}{ID}, $inMemoryCircuit->{ID} , "TestNormalFunctionality->verifyStateConsistency - similar circuit previously in memory has not changed");
 }
 
 # Test consists of creating a circuit request, then saving it on disk.
@@ -294,11 +303,11 @@ sub testVSCHandleEstablishedCircuits {
     ### Run POE
     POE::Kernel->run();
 
-    ok(!$circuitManager->{CIRCUITS}{$establishedNotYetExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - we used an established circuit for a bit, then we tore it down");
-    ok($circuitManager->{CIRCUITS_HISTORY}{$establishedNotYetExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - torn down used circuit now found in history");
-    ok($circuitManager->{CIRCUITS}{$establishedNotExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - used established circuit which doesn't have an expiration date");
-    ok(!$circuitManager->{CIRCUITS}{$establishedExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - established circuit which expired is not used");
-    ok($circuitManager->{CIRCUITS}{$establishedNoExpiration->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - used established circuit which doesn't have an expiration date");
+    ok(!$circuitManager->{RESOURCES}{$establishedNotYetExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - we used an established circuit for a bit, then we tore it down");
+    ok($circuitManager->{RESOURCE_HISTORY}{$establishedNotYetExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - torn down used circuit now found in history");
+    ok($circuitManager->{RESOURCES}{$establishedNotExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - used established circuit which doesn't have an expiration date");
+    ok(!$circuitManager->{RESOURCES}{$establishedExpired->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - established circuit which expired is not used");
+    ok($circuitManager->{RESOURCES}{$establishedNoExpiration->{NAME}}, "TestNormalFunctionality->verifyStateConsistency - used established circuit which doesn't have an expiration date");
 }
 
 # Test consists of creating three offline circuits. One of them is older than HISTORY_DURATION
@@ -333,10 +342,10 @@ sub testVSCOfflineCircuits {
     POE::Kernel->run();
 
     my $linkName = $offlineNew1->{NAME};
-    ok($circuitManager->{CIRCUITS_HISTORY}{$linkName}, "TestNormalFunctionality->verifyStateConsistency - Restored offline circuits");
-    is(keys %{$circuitManager->{CIRCUITS_HISTORY}{$linkName}}, 3,"TestNormalFunctionality->verifyStateConsistency - Restored 2 offline circuits");
-    is_deeply($circuitManager->{CIRCUITS_HISTORY}{$linkName}{$offlineNew1->{ID}}, $offlineNew1, "TestNormalFunctionality->verifyStateConsistency - Restored correct offline circuit");
-    is_deeply($circuitManager->{CIRCUITS_HISTORY}{$linkName}{$offlineNew2->{ID}}, $offlineNew2, "TestNormalFunctionality->verifyStateConsistency - Restored correct offline circuit");
+    ok($circuitManager->{RESOURCE_HISTORY}{$linkName}, "TestNormalFunctionality->verifyStateConsistency - Restored offline circuits");
+    is(keys %{$circuitManager->{RESOURCE_HISTORY}{$linkName}}, 3,"TestNormalFunctionality->verifyStateConsistency - Restored 2 offline circuits");
+    is_deeply($circuitManager->{RESOURCE_HISTORY}{$linkName}{$offlineNew1->{ID}}, $offlineNew1, "TestNormalFunctionality->verifyStateConsistency - Restored correct offline circuit");
+    is_deeply($circuitManager->{RESOURCE_HISTORY}{$linkName}{$offlineNew2->{ID}}, $offlineNew2, "TestNormalFunctionality->verifyStateConsistency - Restored correct offline circuit");
 }
 
 # This is just to have everything in one place for tests of one event
@@ -388,7 +397,7 @@ sub testRCInvalidCircuitRequests {
     my $time = &mytimeofday();
 
     ### Prepare things to test
-    $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'} = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');;
+    $circuitManager->{RESOURCES}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'} = createRequestingCircuit($time, 'Dummy', 'T2_ANSE_CERN_2', 'T2_ANSE_CERN_1');;
     POE::Kernel->post($session, 'requestCircuit',  undef, 'T2_ANSE_CERN_1', undef);
     POE::Kernel->post($session, 'requestCircuit',  'T2_ANSE_CERN_2', undef, undef);
     POE::Kernel->post($session, 'requestCircuit',  'T2_ANSE_CERN_1', 'T2_ANSE_CERN_3', undef);
@@ -420,8 +429,8 @@ sub testRCCreatesRequests {
     sub iTestCreationOfRequests {
         my $circuitManager = $_[ARG0];
 
-        my $c1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
-        my $c2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
+        my $c1 = $circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
+        my $c2 = $circuitManager->{RESOURCES}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
         $partialIDc1 = substr($c1->{ID}, 1, 7);
         $partialIDc2 = substr($c2->{ID}, 1, 7);
 
@@ -442,11 +451,11 @@ sub testRCCreatesRequests {
         is($circuit2->{NODE_A}, 'T2_ANSE_CERN_2', "TestNormalFunctionality->requestCircuit - circuit 2 from node ok");
         is($circuit2->{NODE_B}, 'T2_ANSE_CERN_1', "TestNormalFunctionality->requestCircuit - circuit 2 to node ok");
 
-        ok($circuitManager->{CIRCUITS}{$circuit1->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 1 exists in the circuit manager");
-        ok($circuitManager->{CIRCUITS}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager");
+        ok($circuitManager->{RESOURCES}{$circuit1->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 1 exists in the circuit manager");
+        ok($circuitManager->{RESOURCES}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager");
 
-        is($circuitManager->{CIRCUITS}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{CIRCUITS}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
     # Intermediate test that checks that requests were switched to active circuits
@@ -473,8 +482,8 @@ sub testRCCreatesRequests {
         is($circuit2->{IP_B}, '188.184.134.192', "TestNormalFunctionality->requestCircuit - circuit 2 to ip ok");
         ok($circuit2->{LIFETIME}, "TestNormalFunctionality->requestCircuit - circuit 2 has a life set");
 
-        is($circuitManager->{CIRCUITS}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{CIRCUITS}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
     # Intermediate test that checks that the circuit which had a lifetime expired
@@ -492,9 +501,9 @@ sub testRCCreatesRequests {
         my ($circuit2, $code2) = &openState($fileOff2);
         is($circuit2->{STATUS}, STATUS_CIRCUIT_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 is indeed offline");
 
-        ok(!$circuitManager->{CIRCUITS}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager's history");
-        is($circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{CIRCUITS_HISTORY}{$circuit2->{NAME}}{$circuit2->{ID}}{STATUS}, STATUS_CIRCUIT_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        ok(!$circuitManager->{RESOURCES}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager's history");
+        is($circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCE_HISTORY}{$circuit2->{NAME}}{$circuit2->{ID}}{STATUS}, STATUS_CIRCUIT_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
     my ($circuitManager, $session) = setupResourceManager(0.7, 'creating-circuit-requests.log', undef,
@@ -526,13 +535,13 @@ sub testRCExpiringCircuitRequests {
     ### Run POE
     POE::Kernel->run();
 
-    my @offKeys = keys %{$circuitManager->{CIRCUITS_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}};
+    my @offKeys = keys %{$circuitManager->{RESOURCE_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}};
 
     my $circuitID = substr($offKeys[0], 1, 7);
     my $fileOff = $baseLocation."/data/circuits/offline/T2_ANSE_CERN_1-to-T2_ANSE_CERN_2-$circuitID-".formattedTime($time + 0.1);
     ok(-e $fileOff, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired");
-    ok(!$circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was removed from CIRCUITS");
-    ok($circuitManager->{CIRCUITS_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was placed into CIRCUITS_HISTORY");
+    ok(!$circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was removed from RESOURCES");
+    ok($circuitManager->{RESOURCE_HISTORY}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was placed into RESOURCE_HISTORY");
     ok($circuitManager->{LINKS_BLACKLISTED}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}, "TestNormalFunctionality->requestCircuit - circuit 1 request has expired and was placed into LINKS_BLACKLISTED");
 }
 
@@ -563,8 +572,8 @@ sub testTransferFailure {
     sub iFailTransfers {
         my $circuitManager = $_[ARG0];
 
-        my $circuit1 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
-        my $circuit2 = $circuitManager->{CIRCUITS}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
+        my $circuit1 = $circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'};
+        my $circuit2 = $circuitManager->{RESOURCES}{'T2_ANSE_CERN_2-to-T2_ANSE_CERN_1'};
 
         $partialIDc1 = substr($circuit1->{ID}, 1, 7);
         $partialIDc2 = substr($circuit2->{ID}, 1, 7);

@@ -62,7 +62,7 @@ sub setupResourceManager {
     # Create a new circuit manager and setup session
     my $circuitManager = PHEDEX::File::Download::Circuits::ResourceManager->new(BACKEND_TYPE => $backend,
                                                                                 BACKEND_ARGS => $backendArgs,
-                                                                                CIRCUITDIR => "$baseLocation".'/data',
+                                                                                STATE_DIR => "$baseLocation".'/data',
                                                                                 VERBOSE => 1,
                                                                                 HTTP_CONTROL => defined $httpControl? $httpControl : 0);
     # Only start the events that we deem necesssary

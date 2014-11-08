@@ -26,11 +26,11 @@ sub testMaxCircuitCount {
 
         for (my $i = 1; $i < $allMyCircuits; $i++) {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
-            my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+            my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
             is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "StressTestConcurrentCircuits->requestCircuit - circuit $i status in circuit manager is correct");
 
-            my $partialID = substr($circuit->{ID}, 1, 8);
+            my $partialID = substr($circuit->{ID}, 1, 7);
             my $time = $circuit->{REQUEST_TIME};
             my $fileReq = $baseLocation."/data/circuits/requested/$linkName-$partialID-".formattedTime($time);
 
@@ -55,11 +55,11 @@ sub testMaxCircuitCount {
             my $ip = "127.0.$c.$d";
 
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
-            my $circuit = $circuitManager->{CIRCUITS}{$linkName};
+            my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
             is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE, "StressTestConcurrentCircuits->established - circuit $i status in circuit manager is correct");
 
-            my $partialID = substr($circuit->{ID}, 1, 8);
+            my $partialID = substr($circuit->{ID}, 1, 7);
             my $requestedtime = $circuit->{REQUEST_TIME};
             my $establishedtime = $circuit->{ESTABLISHED_TIME};
 
@@ -84,12 +84,12 @@ sub testMaxCircuitCount {
 
         for (my $i = 1; $i < $allMyCircuits; $i++) {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
-            my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
+            my $circuitID = $circuitManager->{RESOURCE_HISTORY}{$linkName};
             my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
             is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "StressTestConcurrentCircuits->teardownCircuit - circuit $i status in circuit manager is correct");
 
-            my $partialID = substr($circuit->{ID}, 1, 8);
+            my $partialID = substr($circuit->{ID}, 1, 7);
             my $establishedtime = $circuit->{ESTABLISHED_TIME};
             my $offlinetime = $circuit->{LAST_STATUS_CHANGE};
 

@@ -88,6 +88,7 @@ sub registerUpdateRequest {
         return BOD_UPDATE_REDUNDANT;
     }
     
+    # TODO: Differentiate between ajusting bandwidth up or down
     $self->{STATUS} = STATUS_BOD_UPDATING;
     $self->{BANDWIDTH_REQUESTED} = $bandwidth;
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();

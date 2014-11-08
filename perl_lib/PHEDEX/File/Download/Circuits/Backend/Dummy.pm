@@ -39,6 +39,8 @@ sub new
         my $idc = PHEDEX::File::Download::Circuits::Backend::Core::IDC->new(IP => $agents->{$node});
         $self->{AGENT_TRANSLATION}{$node} = $idc;
     }
+    
+    $self->{SUPPORTED_RESOURCE} = CIRCUIT;
 
     bless $self, $class;
     return $self;
