@@ -14,8 +14,9 @@ our @EXPORT = qw(
                 CIRCUIT_REQUEST_SUCCEEDED
                 CIRCUIT_REQUEST_FAILED CIRCUIT_REQUEST_FAILED_PARAMS CIRCUIT_REQUEST_FAILED_SLOTS CIRCUIT_REQUEST_FAILED_BW CIRCUIT_REQUEST_FAILED_IDC CIRCUIT_REQUEST_FAILED_TIMEDOUT
                 EXTERNAL_PID EXTERNAL_EVENTNAME EXTERNAL_OUTPUT 
-                CIRCUIT_TRANSFERS_FAILED CIRCUIT_ALREADY_REQUESTED CIRCUIT_BLACKLISTED CIRCUIT_UNAVAILABLE CIRCUIT_AVAILABLE CIRCUIT_INVALID
+                CIRCUIT_TRANSFERS_FAILED RESOURCE_ALREADY_EXISTS LINK_BLACKLISTED RESOURCE_TYPE_UNSUPPORTED LINK_UNSUPPORTED RESOURCE_REQUEST_POSSIBLE CIRCUIT_INVALID
                 CIRCUIT_TIMER_REQUEST CIRCUIT_TIMER_BLACKLIST CIRCUIT_TIMER_TEARDOWN
+                BOD_UPDATE_REDUNDANT
                 MINUTE HOUR DAY
                 );
 
@@ -57,16 +58,22 @@ use constant {
 
     # TODO: Revisit this and rename with BOD in mind
     # Related to CircuitManager.pm
-    CIRCUIT_AVAILABLE               =>          40,     # Go ahead and request a circuit
-    CIRCUIT_TRANSFERS_FAILED        =>          -40,    # This circuit has been blacklisted because too many transfers failed on it
-    CIRCUIT_ALREADY_REQUESTED       =>          -41,    # Circuit had already been requested or is currently established
-    CIRCUIT_BLACKLISTED             =>          -42,    # Circuits have been temporarily blacklisted on current link
-    CIRCUIT_UNAVAILABLE             =>          -43,    # Circuits not supported on current link
-    CIRCUIT_INVALID                 =>          -44,    # Provided link is not a valid one
+    
+    CIRCUIT_TRANSFERS_FAILED        =>          -41,    # This circuit has been blacklisted because too many transfers failed on it
+    CIRCUIT_INVALID                 =>          -42,    # Provided link is not a valid one
 
+    RESOURCE_REQUEST_POSSIBLE       =>          40,     # Go ahead and request a circuit
+    RESOURCE_ALREADY_EXISTS         =>          -43,    # A resource had already been previously requested for a given link
+    RESOURCE_TYPE_UNSUPPORTED       =>          -44,    # Backend does not supported the management of requested resource type
+    LINK_BLACKLISTED                =>          -45,    # Temporarily cannot use managed resources on current link
+    LINK_UNSUPPORTED                =>          -46,    # Circuits not supported on current link
+    
     CIRCUIT_TIMER_REQUEST           =>          50,     # Used to handle a timer which expired for a request
     CIRCUIT_TIMER_BLACKLIST         =>          51,     # Used to handle a timer which expired for a circuit which was blacklisted
     CIRCUIT_TIMER_TEARDOWN          =>          52,     # Used to handle a timer which expired for a circuit's life
+    
+    # 
+    BOD_UPDATE_REDUNDANT            =>          60,     # An updated of BoD has been requested, but requested bandwidth is already commissioned
     
     # Time constants
     MINUTE  =>      60,
