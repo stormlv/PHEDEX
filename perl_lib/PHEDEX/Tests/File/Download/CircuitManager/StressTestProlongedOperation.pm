@@ -133,7 +133,7 @@ sub iCheckRequest {
     ok($path  =~ m/requested/ && -e $path, "stress test / iCheckRequest - Circuit (in requesting state) exists on disk as well");
 
     # POE alarms test
-    ok(defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_REQUEST}{$circuit->{ID}}, "stress test / iCheckRequest - Timer for request timeout set");
+    ok(defined $circuitManager->{DELAYS}{&TIMER_REQUEST}{$circuit->{ID}}, "stress test / iCheckRequest - Timer for request timeout set");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
@@ -192,9 +192,9 @@ sub iCheckRequestFailure {
     ok($circuitManager->{LINKS_BLACKLISTED}{$linkName}, "stress test / iCheckRequestFailure - Link is now blacklisted");
 
     # POE alarms test
-    ok(!defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_REQUEST}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for request timeout removed");
-    ok(!defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_TEARDOWN}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for teardown removed");
-    ok(defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for unblacklist set");
+    ok(!defined $circuitManager->{DELAYS}{&TIMER_REQUEST}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for request timeout removed");
+    ok(!defined $circuitManager->{DELAYS}{&TIMER_TEARDOWN}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for teardown removed");
+    ok(defined $circuitManager->{DELAYS}{&TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iCheckRequestFailure - Timer for unblacklist set");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
@@ -209,7 +209,7 @@ sub iFailTransfers {
     }
 
     ok($circuitManager->{LINKS_BLACKLISTED}{$linkName}, "stress test / iFailTransfers - Link is now blacklisted");
-    ok(defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iFailTransfers - Timer for unblacklist set");
+    ok(defined $circuitManager->{DELAYS}{&TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iFailTransfers - Timer for unblacklist set");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
@@ -218,7 +218,7 @@ sub iCheckUnblacklist {
     my ($circuitManager, $circuit, $linkName) = @_[ARG0, ARG1, ARG2];
 
     ok(!$circuitManager->{LINKS_BLACKLISTED}{$linkName}, "stress test / iCheckUnblacklist - Link is now removed from blacklist");
-    ok(!defined $circuitManager->{DELAYS}{&CIRCUIT_TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iCheckUnblacklist - Timer for unblacklist removed");
+    ok(!defined $circuitManager->{DELAYS}{&TIMER_BLACKLIST}{$circuit->{ID}}, "stress test / iCheckUnblacklist - Timer for unblacklist removed");
 
     yieldToNextStep($circuitManager, $circuit, $linkName);
 }
@@ -249,7 +249,7 @@ my ($circuitManager, $session) = setupResourceManager(10, 'creating-circuit-requ
 $circuitManager->{VERBOSE} = 0;
 $circuitManager->Logmsg('Stress-testing the circuit manager according to predefined scenarios');
 $circuitManager->{SYNC_HISTORY_FOLDER} = 1;
-$circuitManager->{CIRCUIT_REQUEST_TIMEOUT} = $tRequestTimeout;
+$circuitManager->{REQUEST_TIMEOUT} = $tRequestTimeout;
 $circuitManager->{BLACKLIST_DURATION} = $tUnblacklist;
 
 ### Run POE

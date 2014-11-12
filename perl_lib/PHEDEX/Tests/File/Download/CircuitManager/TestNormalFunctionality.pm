@@ -528,7 +528,7 @@ sub testRCExpiringCircuitRequests {
     my ($circuitManager, $session) = setupResourceManager(0.3, 'circuit-request-expires.log');
     $circuitManager->Logmsg('Testing event requestCircuit');
     $circuitManager->{BACKEND}{TIME_SIMULATION} = 0.2;
-    $circuitManager->{CIRCUIT_REQUEST_TIMEOUT} = 0.1;
+    $circuitManager->{REQUEST_TIMEOUT} = 0.1;
 
     POE::Kernel->post($session, 'requestCircuit', 'T2_ANSE_CERN_1', 'T2_ANSE_CERN_2');
 

@@ -49,6 +49,7 @@ sub new
             LAST_STATUS_CHANGE      => undef,
             
             STATE_DIR               => undef,
+            REQUEST_TIMEOUT         => 5*MINUTE,         # in seconds
             
             VERBOSE                 => 0,
     );

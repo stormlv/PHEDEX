@@ -40,8 +40,6 @@ sub new
                                             CIRCUIT_FAILED_TRANSFERS        =>      [],
                                         },
 
-            # General parameters
-            CIRCUIT_REQUEST_TIMEOUT       => 5*MINUTE,         # in seconds
             CIRCUIT_DEFAULT_LIFETIME      => 5*HOUR,      # in seconds
 
             # Performance related parameters
