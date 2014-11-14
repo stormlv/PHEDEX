@@ -72,4 +72,11 @@ sub backendTeardownCircuit {
     $self->Fatal("teardown not implemented by circuit backend ", __PACKAGE__);
 }
 
+# This method should be implemented by the backend child
+# It will be called update the bandwidth
+sub backendUpdateBandwidth {
+    my $self = shift;
+    $self->Fatal("request not implemented by backend ", __PACKAGE__);
+}
+
 1;

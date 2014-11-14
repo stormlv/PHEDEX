@@ -41,7 +41,7 @@ sub initResource {
     
     # Do our own initialisation
     $self->{STATE_DIR}.="/bod";
-    $self->{STATUS} = STATUS_BOD_OFFLINE;
+    $self->{STATUS} = STATUS_OFFLINE;
     $self->{BANDWIDTH_ALLOCATED} = 0;
     
     return $self->SUPER::initResource($backend, BOD, $nodeA, $nodeB, $bidirectional);
@@ -57,8 +57,8 @@ sub getSaveParams {
     # since in the case of BoD the path should remain up even when updating
     # The object goes into the /offline folder if status if offline, or updating and allocated bw = 0
     # Goes into /online for the rest of the cases
-    if ($self->{STATUS} == STATUS_BOD_OFFLINE ||
-        $self->{STATUS} == STATUS_BOD_UPDATING && $self->{BANDWIDTH_ALLOCATED} == 0) {
+    if ($self->{STATUS} == STATUS_OFFLINE ||
+        $self->{STATUS} == STATUS_UPDATING && $self->{BANDWIDTH_ALLOCATED} == 0) {
         $savePath = $self->{STATE_DIR}.'/offline';
     } else {
         $savePath = $self->{STATE_DIR}.'/online';
@@ -75,7 +75,7 @@ sub registerUpdateRequest {
 
     my $msg = 'Bandwidth->registerUpdateRequest';
 
-    if ($self->{STATUS} == STATUS_BOD_UPDATING) {
+    if ($self->{STATUS} == STATUS_UPDATING) {
         $self->Logmsg("$msg: Cannot request an update. Update already in progress");
         return ERROR_GENERIC;
     }
@@ -89,11 +89,11 @@ sub registerUpdateRequest {
     }
     
     # TODO: Differentiate between ajusting bandwidth up or down
-    $self->{STATUS} = STATUS_BOD_UPDATING;
+    $self->{STATUS} = STATUS_UPDATING;
     $self->{BANDWIDTH_REQUESTED} = $bandwidth;
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();
 
-    $self->Logmsg("$msg: state has been switched to STATUS_BOD_UPDATING");
+    $self->Logmsg("$msg: state has been switched to STATUS_UPDATING");
 
     return OK;
 }
@@ -104,7 +104,7 @@ sub registerUpdateSuccessful {
 
     my $msg = 'Bandwidth->registerUpdateSuccessful';
 
-    if ($self->{STATUS} != STATUS_BOD_UPDATING) {
+    if ($self->{STATUS} != STATUS_UPDATING) {
         $self->Logmsg("$msg: Cannot update status if we're not in updating mode already");
         return ERROR_GENERIC;
     }
@@ -119,10 +119,10 @@ sub registerUpdateSuccessful {
     
     if ($self->{BANDWIDTH_ALLOCATED} == 0) {
         $self->Logmsg("$msg: Effectively turning off the resource (by requesting BW of 0)");
-        $self->{STATUS} = STATUS_BOD_OFFLINE;
+        $self->{STATUS} = STATUS_OFFLINE;
     } else {
         $self->Logmsg("$msg: Bandwidth capacity updated");
-        $self->{STATUS} = STATUS_BOD_ONLINE;
+        $self->{STATUS} = STATUS_ONLINE;
     }
     
     return OK;
@@ -136,13 +136,13 @@ sub registerUpdateFailed {
     
     my $msg = 'Bandwidth->registerUpdateFailed';
     
-    if ($self->{STATUS} != STATUS_BOD_UPDATING) {
+    if ($self->{STATUS} != STATUS_UPDATING) {
         $self->Logmsg("$msg: Cannot update status if we're not in updating mode already");
         return ERROR_GENERIC;
     }
     
     $self->{BANDWIDTH_REQUESTED} = undef;
-    $self->{STATUS} = $self->{BANDWIDTH_ALLOCATED} == 0 ? STATUS_BOD_OFFLINE : STATUS_BOD_ONLINE;
+    $self->{STATUS} = $self->{BANDWIDTH_ALLOCATED} == 0 ? STATUS_OFFLINE : STATUS_ONLINE;
     
     return OK;
 }

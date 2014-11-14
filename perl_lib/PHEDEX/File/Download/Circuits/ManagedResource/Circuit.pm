@@ -62,7 +62,7 @@ sub initResource {
     
     # Do our own initialisation
     $self->{STATE_DIR}.="/circuits";
-    $self->{STATUS} = STATUS_CIRCUIT_OFFLINE;
+    $self->{STATUS} = STATUS_OFFLINE;
     
     return $self->SUPER::initResource($backend, CIRCUIT, $nodeA, $nodeB, $bidirectional);
 }
@@ -70,7 +70,7 @@ sub initResource {
 # Returns the expiration time if LIFETIME was defined; undef otherwise
 sub getExpirationTime {
     my $self = shift;
-    return $self->{STATUS} == STATUS_CIRCUIT_ONLINE &&
+    return $self->{STATUS} == STATUS_ONLINE &&
            defined $self->{LIFETIME} ? $self->{ESTABLISHED_TIME} + $self->{LIFETIME} : undef;
 }
 
@@ -88,15 +88,15 @@ sub registerRequest {
 
     my $msg = 'Circuit->registerRequest';
 
-    # Cannot change status to STATUS_CIRCUIT_REQUESTING if
+    # Cannot change status to STATUS_UPDATING if
     #   - Circuit is not previously initialised
-    #   - The status is not prior STATUS_CIRCUIT_OFFLINE
-    if (!defined $self->{ID} || $self->{STATUS} != STATUS_CIRCUIT_OFFLINE) {
-        $self->Logmsg("$msg: Cannot change status to STATUS_CIRCUIT_REQUESTING");
+    #   - The status is not prior STATUS_OFFLINE
+    if (!defined $self->{ID} || $self->{STATUS} != STATUS_OFFLINE) {
+        $self->Logmsg("$msg: Cannot change status to STATUS_UPDATING");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_CIRCUIT_REQUESTING;
+    $self->{STATUS} = STATUS_UPDATING;
     $self->{REQUEST_TIME} = &mytimeofday();
     $self->{LAST_STATUS_CHANGE} = $self->{REQUEST_TIME};
     
@@ -104,7 +104,7 @@ sub registerRequest {
     $self->{LIFETIME} = $lifetime;
     $self->{BANDWIDTH_REQUESTED} = $bandwidth;
 
-    $self->Logmsg("$msg: state has been switched to STATUS_CIRCUIT_REQUESTING");
+    $self->Logmsg("$msg: state has been switched to STATUS_UPDATING");
 
     return OK;
 }
@@ -115,17 +115,17 @@ sub registerEstablished {
 
     my $msg = 'Circuit->registerEstablished';
 
-    # Cannot change status to STATUS_CIRCUIT_ONLINE if
-    #   - The status is not prior STATUS_CIRCUIT_REQUESTING
+    # Cannot change status to STATUS_ONLINE if
+    #   - The status is not prior STATUS_UPDATING
     #   - both $ipA and $ipB are not valid addresses
-    if ($self->{STATUS} != STATUS_CIRCUIT_REQUESTING ||
+    if ($self->{STATUS} != STATUS_UPDATING ||
         determineAddressType($ipA) == ADDRESS_INVALID ||
         determineAddressType($ipB) == ADDRESS_INVALID) {
-        $self->Logmsg("$msg: Cannot change status to STATUS_CIRCUIT_ONLINE");
+        $self->Logmsg("$msg: Cannot change status to STATUS_ONLINE");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_CIRCUIT_ONLINE;
+    $self->{STATUS} = STATUS_ONLINE;
     $self->{ESTABLISHED_TIME} = &mytimeofday();
     $self->{LAST_STATUS_CHANGE} = $self->{ESTABLISHED_TIME};
     $self->{IP_A} = $ipA;
@@ -134,7 +134,7 @@ sub registerEstablished {
     # These two can also be undef
     $self->{BANDWIDTH_ALLOCATED} = $bandwidth;
 
-    $self->Logmsg("$msg: state has been switched to STATUS_CIRCUIT_ONLINE");
+    $self->Logmsg("$msg: state has been switched to STATUS_ONLINE");
     return OK;
 }
 
@@ -144,15 +144,15 @@ sub registerTakeDown {
 
     my $msg = 'Circuit->registerTakeDown';
 
-    if ($self->{STATUS} != STATUS_CIRCUIT_ONLINE) {
-        $self->Logmsg("$msg: Cannot change status to STATUS_CIRCUIT_OFFLINE");
+    if ($self->{STATUS} != STATUS_ONLINE) {
+        $self->Logmsg("$msg: Cannot change status to STATUS_OFFLINE");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_CIRCUIT_OFFLINE;
+    $self->{STATUS} = STATUS_OFFLINE;
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();
 
-    $self->Logmsg("$msg: state has been switched to STATUS_CIRCUIT_OFFLINE");
+    $self->Logmsg("$msg: state has been switched to STATUS_OFFLINE");
     return OK;
 }
 
@@ -165,12 +165,12 @@ sub registerRequestFailure {
 
     my $msg = 'Circuit->registerRequestFailure';
 
-    if ($self->{STATUS} != STATUS_CIRCUIT_REQUESTING) {
-        $self->Logmsg("$msg: Cannot register a request failure for a circuit not STATUS_CIRCUIT_REQUESTING");
+    if ($self->{STATUS} != STATUS_UPDATING) {
+        $self->Logmsg("$msg: Cannot register a request failure for a circuit not STATUS_UPDATING");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_CIRCUIT_OFFLINE;
+    $self->{STATUS} = STATUS_OFFLINE;
     $self->{LAST_STATUS_CHANGE} = &mytimeofday();
 
     # Keep track of why the request failed
@@ -197,8 +197,8 @@ sub registerTransferFailure {
     # TODO: When registering a failure, it might be nice to also clean up old ones or just "remember the last xxx failures"
     my $msg = 'Circuit->registerTransferFailure';
 
-    if ($self->{STATUS} != STATUS_CIRCUIT_ONLINE) {
-        $self->Logmsg("$msg: Cannot register a trasfer failure for a circuit not STATUS_CIRCUIT_ONLINE");
+    if ($self->{STATUS} != STATUS_ONLINE) {
+        $self->Logmsg("$msg: Cannot register a trasfer failure for a circuit not STATUS_ONLINE");
         return ERROR_GENERIC;
     }
 
@@ -223,15 +223,15 @@ sub getSaveParams {
     my ($savePath, $saveTime);
     
     switch ($self->{STATUS}) {
-        case STATUS_CIRCUIT_REQUESTING {
+        case STATUS_UPDATING {
             $savePath = $self->{STATE_DIR}.'/requested';
             $saveTime = $self->{REQUEST_TIME};
         }
-        case STATUS_CIRCUIT_ONLINE {
+        case STATUS_ONLINE {
             $savePath = $self->{STATE_DIR}.'/online';
             $saveTime = $self->{ESTABLISHED_TIME};
         }
-        case STATUS_CIRCUIT_OFFLINE {
+        case STATUS_OFFLINE {
             $savePath = $self->{STATE_DIR}.'/offline';
             $saveTime = $self->{LAST_STATUS_CHANGE};
         }

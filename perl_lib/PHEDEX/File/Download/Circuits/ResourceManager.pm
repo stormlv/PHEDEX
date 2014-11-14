@@ -162,7 +162,7 @@ sub getManagedResource {
         return undef;
     }
     
-    if ($resource->{STATUS} == STATUS_CIRCUIT_REQUESTING || $resource->{STATUS} == STATUS_BOD_UPDATING) {
+    if ($resource->{STATUS} == STATUS_UPDATING || $resource->{STATUS} == STATUS_UPDATING) {
         $self->Logmsg("$msg: Found resources but they are busy with updates");
         return undef;
     }
@@ -459,7 +459,7 @@ sub transferFailed {
         return;
     }
 
-    if ($circuit->{STATUS} != STATUS_CIRCUIT_ONLINE) {
+    if ($circuit->{STATUS} != STATUS_ONLINE) {
         $self->Logmsg("$msg: Can't do anything with this circuit");
         return;
     }
@@ -489,7 +489,7 @@ sub transferFailed {
 }
 
 sub requestResource {
-	my ( $self, $nodeA, $nodeB, $type) = @_;
+    my ( $self, $nodeA, $nodeB, $type) = @_;
 
     my $msg = "ResourceManager->requestResource";
 
@@ -511,37 +511,37 @@ sub requestResource {
         $self->Logmsg("$msg: Skipping request for $linkName since it is currently blacklisted");
         return undef;
     }
-	
-	if (defined $self->{RESOURCES}{$linkName} && 
-		$self->{RESOURCES}{$linkName}{RESOURCE_TYPE} ne $type) {
-		$self->Logmsg("$msg: There's a resource already provisioned and it's not the type you requested");
-		return undef;
-	}
-	
-	return $linkName;
+
+    if (defined $self->{RESOURCES}{$linkName} && 
+        $self->{RESOURCES}{$linkName}{RESOURCE_TYPE} ne $type) {
+        $self->Logmsg("$msg: There's a resource already provisioned and it's not the type you requested");
+        return undef;
+    }
+
+    return $linkName;
 }
 
 sub requestBandwidth {
-	my ( $self, $kernel, $session, $nodeA, $nodeB, $bandwidth) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2 ];
+    my ( $self, $kernel, $session, $nodeA, $nodeB, $bandwidth) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2 ];
 
     my $msg = "ResourceManager->$ownHandles->{REQUEST_BW}";
 
-	my $linkName = $self->requestResource($nodeA, $nodeB, BOD);	
-	return if !defined $linkName;
-	
-	my $resource;
-	
-	# Check if a bandwidth is not already provisioned
+    my $linkName = $self->requestResource($nodeA, $nodeB, BOD);	
+    return if !defined $linkName;
+
+    my $resource;
+
+    # Check if a bandwidth is not already provisioned
     if (defined $self->{RESOURCES}{$linkName}) {
-    	$resource = $self->{RESOURCES}{$linkName};      
+        $resource = $self->{RESOURCES}{$linkName};      
     } else {
-    	$resource = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(STATE_DIR => $self->{STATE_DIR},
-																					  SCOPE => $self->{SCOPE},
+        $resource = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(STATE_DIR => $self->{STATE_DIR},
+                                                                                      SCOPE => $self->{SCOPE},
                                                                                       VERBOSE => $self->{VERBOSE});
-    	$resource->initResource($self->{BACKEND_TYPE}, $nodeA, $nodeB, 1);
+        $resource->initResource($self->{BACKEND_TYPE}, $nodeA, $nodeB, 1);
     }
-	
-	# Switch from the 'offline' to 'requesting' state, save to disk and store this in our memory
+
+    # Switch from the 'offline' to 'requesting' state, save to disk and store this in our memory
     eval {
         $resource->registerUpdateRequest($bandwidth, 1);
         $self->{RESOURCES}{$linkName} = $bandwidth;
@@ -558,10 +558,10 @@ sub requestCircuit {
 
     my $msg = "ResourceManager->$ownHandles->{REQUEST_CIRCUIT}";
 
-	my $linkName = $self->requestResource($nodeA, $nodeB, CIRCUIT);
-	return if !defined $linkName;
-	
-	# Check if a circuit is not already provisioned
+    my $linkName = $self->requestResource($nodeA, $nodeB, CIRCUIT);
+    return if !defined $linkName;
+
+    # Check if a circuit is not already provisioned
     if ($self->{RESOURCES}{$linkName}) {
         $self->Logmsg("$msg: Skipping request, since a circuit has already been provisiond (requested/established) on $linkName");
         return;
@@ -599,85 +599,101 @@ sub requestCircuit {
 # the request timed out. In either case, this is obviously bad and what needs doing
 # is the same in both cases
 sub handleRequestFailure {
-    my ($self, $circuit, $code) = @_;
+    my ($self, $resource, $code) = @_;
 
     my $msg = "ResourceManager->handleRequestFailure";
 
-    if (!defined $circuit) {
+    if (!defined $resource) {
         $self->Logmsg("$msg: No circuit was provided");
         return;
     }
 
-    my $linkName = $circuit->{NAME};
+    my $linkName = $resource->{NAME};
 
-    if ($circuit->{STATUS} != STATUS_CIRCUIT_REQUESTING) {
-        $self->Logmsg("$msg: Can't do anything with this circuit");
+    if ($resource->{STATUS} != STATUS_UPDATING) {
+        $self->Logmsg("$msg: Can't do anything with this resource");
         return;
     }
 
     # We got a response for the request - we need to remove the timer set in case the request timed out
-    $self->delayRemove($poe_kernel, TIMER_REQUEST, $circuit);
+    $self->delayRemove($poe_kernel, TIMER_REQUEST, $resource);
 
     eval {
         $self->Logmsg("$msg: Updating internal data");
         # Remove the state that was saved to disk
-        $circuit->removeState();
-
-        # Remove from hash of all circuits, then add it to the historical list
-        delete $self->{RESOURCES}{$linkName};
-        $self->addResourceToHistory($circuit);
-
-
-        my $now = &mytimeofday();
+        $resource->removeState();
+        
+        # Update circuit object internal data as well
+        switch($resource->{RESOURCE_TYPE}) {
+            case CIRCUIT {
+                # Remove from hash of all circuits, then add it to the historical list
+                delete $self->{RESOURCES}{$resource->{NAME}};
+                $self->addResourceToHistory($resource);
+                $resource->registerRequestFailure($code);
+            }
+            case BOD {
+                $resource->registerUpdateFailed();
+            }
+        }
 
         # Update circuit object internal data as well
-        $circuit->registerRequestFailure($code);
-        $circuit->saveState();
+        
+        $resource->saveState();
 
         # Blacklist this link
         # This needs to be done *after* we register the failure with the circuit
-        $self->addLinkToBlacklist($circuit, CIRCUIT_REQUEST_FAILED);
+        $self->addLinkToBlacklist($resource, CIRCUIT_REQUEST_FAILED);
     }
-
 }
 
 sub handleRequestResponse {
-    my ($self, $kernel, $session, $circuit, $return, $code) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2 ];
+    my ($self, $kernel, $session, $resource, $returnValues, $code) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2 ];
 
     my $msg = "ResourceManager->$ownHandles->{REQUEST_REPLY}";
 
-    if (!defined $circuit || !defined $code) {
-        $self->Logmsg("$msg: Circuit or code not defined");
+    if (! defined $resource || ! defined $code) {
+        $self->Logmsg("$msg: Resource or code not defined");
         return;
     }
 
-    my $linkName = $circuit->{NAME};
-
-    if ($circuit->{STATUS} != STATUS_CIRCUIT_REQUESTING) {
-        $self->Logmsg("$msg: Can't do anything with this circuit");
+    my $linkName = $resource->{NAME};
+    
+    if (($resource->{RESOURCE_TYPE} && $resource->{STATUS} != STATUS_UPDATING))	 {
+        $self->Logmsg("$msg: Can't do anything with this resource");
         return;
     }
-
-    # If the circuit request failed, call the method handling request failures
+        
+    # If the request failed, call the method handling request failures
     if ($code < 0) {
         $self->Logmsg("$msg: Circuit request failed for $linkName");
-        $self->handleRequestFailure($circuit, $code);
+        $self->handleRequestFailure($resource, $code);
         return;
     }
 
+    $self->Logmsg("$msg: Request succeeded for $linkName");
+    
     # We got a response for the request - we need to remove the timer set in case the request timed out
-    $self->delayRemove($kernel, TIMER_REQUEST, $circuit);
-
-    # If the circuit request succeeded ... yay
-    $self->Logmsg("$msg: Circuit request succeeded for $linkName");
-    $circuit->removeState();
-    $circuit->registerEstablished($return->{IP_A}, $return->{IP_B}, $return->{BANDWIDTH});
-    $circuit->saveState();
-
-    $self->{RESOURCES}{$linkName} = $circuit;
-    if (defined $circuit->{LIFETIME}) {
+    $self->delayRemove($kernel, TIMER_REQUEST, $resource);
+    
+    # Erase old state	
+    $resource->removeState();
+         
+    # Update state
+    switch($resource->{RESOURCE_TYPE}) {
+        case CIRCUIT {
+            $resource->registerEstablished($returnValues->{IP_A}, $returnValues->{IP_B}, $returnValues->{BANDWIDTH});
+        }
+        case BOD {
+            $resource->registerUpdateSuccessful();
+        }
+    }
+    
+    # Save new state
+    $resource->saveState();
+    
+    if (defined $resource->{LIFETIME}) {
         $self->Logmsg("$msg: Circuit has an expiration date. Starting countdown to teardown");
-        $self->delayAdd($kernel, $ownHandles->{HANDLE_TIMER}, $circuit->{LIFETIME}, TIMER_TEARDOWN, $circuit);
+        $self->delayAdd($poe_kernel, $ownHandles->{HANDLE_TIMER}, $resource->{LIFETIME}, TIMER_TEARDOWN, $resource);
     }
 }
 
@@ -849,11 +865,11 @@ sub teardownAll {
     foreach my $circuit (values %{$self->{RESOURCES}}) {
         my $backend = $self->{BACKEND};
         switch ($circuit->{STATUS}) {
-            case STATUS_CIRCUIT_REQUESTING {
+            case STATUS_UPDATING {
                 # TODO: Check and see if you can cancel requests
                 # $backend->cancel_request($circuit);
             }
-            case STATUS_CIRCUIT_ONLINE {
+            case STATUS_ONLINE {
                 $self->Logmsg("$msg: Tearing down circuit for link $circuit->{NAME}");
                 $self->handleCircuitTeardown($poe_kernel, $poe_kernel->ID_id_to_session($self->{SESSION_ID}), $circuit);
             }

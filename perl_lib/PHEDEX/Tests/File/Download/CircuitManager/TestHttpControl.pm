@@ -53,7 +53,7 @@ sub testHttpCircuitLifecycle {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
-        is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "circuit manager / requestCircuit - circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_UPDATING, "circuit manager / requestCircuit - circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 7);
         my $time = $circuit->{REQUEST_TIME};
@@ -114,7 +114,7 @@ sub testHttpCircuitLifecycle {
         my $circuitID = $circuitManager->{RESOURCE_HISTORY}{$linkName};
         my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-        is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "circuit manager / teardownCircuit - circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_OFFLINE, "circuit manager / teardownCircuit - circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 7);
         my $establishedtime = $circuit->{ESTABLISHED_TIME};

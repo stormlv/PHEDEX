@@ -28,7 +28,7 @@ sub testMaxCircuitCount {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
             my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
-            is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "StressTestConcurrentCircuits->requestCircuit - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_UPDATING, "StressTestConcurrentCircuits->requestCircuit - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 7);
             my $time = $circuit->{REQUEST_TIME};
@@ -57,7 +57,7 @@ sub testMaxCircuitCount {
             my $linkName = "T2_ANSE_CERN_X-to-T2_ANSE_CERN_$i";
             my $circuit = $circuitManager->{RESOURCES}{$linkName};
 
-            is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE, "StressTestConcurrentCircuits->established - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_ONLINE, "StressTestConcurrentCircuits->established - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 7);
             my $requestedtime = $circuit->{REQUEST_TIME};
@@ -87,7 +87,7 @@ sub testMaxCircuitCount {
             my $circuitID = $circuitManager->{RESOURCE_HISTORY}{$linkName};
             my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-            is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "StressTestConcurrentCircuits->teardownCircuit - circuit $i status in circuit manager is correct");
+            is($circuit->{STATUS}, STATUS_OFFLINE, "StressTestConcurrentCircuits->teardownCircuit - circuit $i status in circuit manager is correct");
 
             my $partialID = substr($circuit->{ID}, 1, 7);
             my $establishedtime = $circuit->{ESTABLISHED_TIME};

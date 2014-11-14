@@ -31,7 +31,7 @@ sub testMLBackend {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-        is($circuit->{STATUS}, STATUS_CIRCUIT_REQUESTING, "iTestCircuitRequest: circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_UPDATING, "iTestCircuitRequest: circuit status in circuit manager is correct");
         is($circuit->{NODE_A}, "T2_ANSE_CERN_1", "iTestCircuitRequest: circuit request validated FROM parameter");
         is($circuit->{NODE_B}, "T2_ANSE_CERN_2", "iTestCircuitRequest: circuit request validated TO parameter");
         
@@ -48,7 +48,7 @@ sub testMLBackend {
         my $linkName = "T2_ANSE_CERN_1-to-T2_ANSE_CERN_2";
         my $circuit = $circuitManager->{CIRCUITS}{$linkName};
 
-        is($circuit->{STATUS}, STATUS_CIRCUIT_ONLINE, "iTestCircuitEstablished: circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_ONLINE, "iTestCircuitEstablished: circuit status in circuit manager is correct");
         is($circuit->{NODE_A}, "T2_ANSE_CERN_1", "iTestCircuitEstablished: circuit established, validated NODE_A parameter");
         is($circuit->{NODE_B}, "T2_ANSE_CERN_2", "iTestCircuitEstablished: circuit established, validated NODE_B parameter");
         is($circuit->{IP_A}, "127.0.0.3", "iTestCircuitEstablished: circuit established, validated IP_A parameter");
@@ -77,7 +77,7 @@ sub testMLBackend {
         my $circuitID = $circuitManager->{CIRCUITS_HISTORY}{$linkName};
         my $circuit = $circuitID->{(keys %{$circuitID})[0]};
 
-        is($circuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "iTestTeardown: circuit status in circuit manager is correct");
+        is($circuit->{STATUS}, STATUS_OFFLINE, "iTestTeardown: circuit status in circuit manager is correct");
 
         my $partialID = substr($circuit->{ID}, 1, 8);
         my $establishedtime = $circuit->{ESTABLISHED_TIME};

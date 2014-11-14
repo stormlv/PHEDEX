@@ -286,7 +286,7 @@ sub transfer_task
     my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
 
     # Check to see if a circuit is online for this pair of nodes
-    my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, STATUS_CIRCUIT_ONLINE);
+    my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, STATUS_ONLINE);
 
     # A circuit is established, better as well use it
     # TODO: We probably should do a bulk change of PFNs per job, instead of per task in job
@@ -347,7 +347,7 @@ sub finish_task
     if ($task->{REPORT_CODE} != 0 || $task->{XFER_CODE} != 0) {
 
         # Make sure that the circuit has not expired yet
-        my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, STATUS_CIRCUIT_ONLINE);
+        my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, STATUS_ONLINE);
         return 1 unless defined $circuit;
 
         my $linkName = $circuit->getLinkName();

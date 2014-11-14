@@ -83,5 +83,25 @@ sub backendTeardownCircuit {
     return 'torndown';
 }
 
+sub backendUpdateBandwidth {
+	my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
+    
+    if (!defined $resource) {
+        $self->Logmsg("Provided object is invalid :|");
+        $kernel->call($session, $callback, $resource, undef, CIRCUIT_REQUEST_FAILED_PARAMS);
+    }
+    
+    # Simulate a non response from backend if the time simulation is undef
+    return if (!defined $self->{TIME_SIMULATION});
+
+    if ($self->{TIME_SIMULATION} >= 0) {
+        $kernel->delay_add($callback, $self->{TIME_SIMULATION}, $resource, CIRCUIT_REQUEST_SUCCEEDED);
+    } else {
+        $kernel->delay_add($callback, -$self->{TIME_SIMULATION}, $resource, CIRCUIT_REQUEST_FAILED);
+    }
+    
+    return 'torndown';
+}
+
 1;
 

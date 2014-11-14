@@ -28,10 +28,10 @@ sub testInitialisation {
     is($testCircuit->{NODE_A}, 'Node_A', "$msg: Object initialisation - Node_A set");
     is($testCircuit->{NODE_B}, 'Node_B', "$msg: Object initialisation - Node_B set");
     is($testCircuit->{BOOKING_BACKEND}, 'Dummy', "$msg: Object initialisation - Backend set");
-    is($testCircuit->{STATUS}, STATUS_CIRCUIT_OFFLINE, "$msg: Object initialisation - Status set to offline");
+    is($testCircuit->{STATUS}, STATUS_OFFLINE, "$msg: Object initialisation - Status set to offline");
     is($testCircuit->{STATE_DIR}, '/tmp/managed/circuits', "$msg: Object initialisation - Correct state folder set");
     is($testCircuit->{SCOPE}, 'GENERIC', "$msg: Object initialisation - Scope set");
-    is($testCircuit->{CIRCUIT_REQUEST_TIMEOUT}, 5*MINUTE, "$msg: Object initialisation - Default request timeout set");
+    is($testCircuit->{REQUEST_TIMEOUT}, 5*MINUTE, "$msg: Object initialisation - Default request timeout set");
     is($testCircuit->{CIRCUIT_DEFAULT_LIFETIME}, 5*HOUR, "$msg: Object initialisation - Default lifetime set");
 }
 
@@ -191,7 +191,7 @@ sub testStatusChange{
     my $testCircuit1 = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(NODE_A => 'T2_ANSE_GENEVA', NODE_B => 'T2_ANSE_AMSTERDAM');
     $testCircuit1->initResource("Dummy", "T2_ANSE_GENEVA", "T2_ANSE_GENEVA", 0);
     is($testCircuit1->registerRequest(), OK, "$msg: Changed state to requested");
-    is($testCircuit1->{STATUS}, STATUS_CIRCUIT_REQUESTING, "$msg: Changed state verified");
+    is($testCircuit1->{STATUS}, STATUS_UPDATING, "$msg: Changed state verified");
     is($testCircuit1->registerEstablished(), ERROR_GENERIC, "$msg: Cannot change state to established (IPs not specified)");
 
     # Test methods on a circuit which is "in request"
@@ -200,14 +200,14 @@ sub testStatusChange{
     is($testCircuit2->registerEstablished('192.168.0.1'), ERROR_GENERIC, "$msg: Cannot change stat to established");
     is($testCircuit2->registerEstablished('192.168.0.1', '256.168.0.1'), ERROR_GENERIC, "$msg: Cannot change stat to established");
     is($testCircuit2->registerEstablished('192.168.0.1','192.168.0.2'), OK, "$msg: Changed state to established");
-    is($testCircuit2->{STATUS}, STATUS_CIRCUIT_ONLINE, "$msg: Changed state verified - STATUS set");
+    is($testCircuit2->{STATUS}, STATUS_ONLINE, "$msg: Changed state verified - STATUS set");
     is($testCircuit2->{IP_A}, '192.168.0.1', "$msg: Changed state verified - fromIP set");
     is($testCircuit2->{IP_B}, '192.168.0.2', "$msg: Changed state verified - toIP set");
 
     # Test methods on a circuit which is "in request"
     my $testCircuit3 = createRequestingCircuit();
     is($testCircuit3->registerRequestFailure('my reason'), OK, "$msg: Changed state to request failed");
-    is($testCircuit3->{STATUS}, STATUS_CIRCUIT_OFFLINE, "$msg: Changed state verified - STATUS set");
+    is($testCircuit3->{STATUS}, STATUS_OFFLINE, "$msg: Changed state verified - STATUS set");
 }
 
 # Test consists of checking that registerRequestFailure and registerTransferFailure correctly save error details in circuit

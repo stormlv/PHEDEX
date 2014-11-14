@@ -27,7 +27,7 @@ sub testInitialisation {
     is($testBandwidth->{NODE_A}, 'Node_A', "$msg: Object initialisation - Node_A set");
     is($testBandwidth->{NODE_B}, 'Node_B', "$msg: Object initialisation - Node_B set");
     is($testBandwidth->{BOOKING_BACKEND}, 'Dummy', "$msg: Object initialisation - Backend set");
-    is($testBandwidth->{STATUS}, STATUS_BOD_OFFLINE, "$msg: Object initialisation - Status set to offline");
+    is($testBandwidth->{STATUS}, STATUS_OFFLINE, "$msg: Object initialisation - Status set to offline");
     is($testBandwidth->{STATE_DIR}, '/tmp/managed/bod', "$msg: Object initialisation - Correct state folder set");
     is($testBandwidth->{BANDWIDTH_STEP}, 1, "$msg: Object initialisation - Bandwidth step set");
     is($testBandwidth->{BANDWIDTH_MIN}, 0, "$msg: Object initialisation - Min bandwidth set");
@@ -71,11 +71,11 @@ sub testStatusChange {
     is($offlineBW->registerUpdateRequest(1000), OK, "$msg: registered update request on an offline bw");
     is($runningBW->registerUpdateRequest(1000), OK, "$msg: registered update request on an online bw");
     
-    is($offlineBW->{STATUS}, STATUS_BOD_UPDATING, "$msg: updating object status is ok");
+    is($offlineBW->{STATUS}, STATUS_UPDATING, "$msg: updating object status is ok");
     is($offlineBW->{BANDWIDTH_ALLOCATED}, 0, "$msg: updating object allocated bw is 0");
     is($offlineBW->{BANDWIDTH_REQUESTED}, 1000, "$msg: updating object requested bw is 500");
     
-    is($runningBW->{STATUS}, STATUS_BOD_UPDATING, "$msg: updating object status is ok");
+    is($runningBW->{STATUS}, STATUS_UPDATING, "$msg: updating object status is ok");
     is($runningBW->{BANDWIDTH_ALLOCATED}, 500, "$msg: updating object allocated bw is 0");
     is($runningBW->{BANDWIDTH_REQUESTED}, 1000, "$msg: updating object requested bw is undef");
     
@@ -87,12 +87,12 @@ sub testStatusChange {
     is($offlineBW->registerUpdateFailed(), ERROR_GENERIC, "$msg: cannot register a failed update on an offline bw");
     is($runningBW->registerUpdateFailed(), ERROR_GENERIC, "$msg: cannot register a failed update on an online bw");
     
-    is($updatingBW->{STATUS}, STATUS_BOD_UPDATING, "$msg: updating object status is ok");
+    is($updatingBW->{STATUS}, STATUS_UPDATING, "$msg: updating object status is ok");
     is($updatingBW->{BANDWIDTH_ALLOCATED}, 0, "$msg: updating object allocated bw is 0");
     is($updatingBW->{BANDWIDTH_REQUESTED}, 500, "$msg: updating object requested bw is 500");
     
     is($updatingBW->registerUpdateFailed(), OK, "$msg: registered update failure on updating bw");
-    is($updatingBW->{STATUS}, STATUS_BOD_OFFLINE, "$msg: updating object status is ok");
+    is($updatingBW->{STATUS}, STATUS_OFFLINE, "$msg: updating object status is ok");
     is($updatingBW->{BANDWIDTH_ALLOCATED}, 0, "$msg: updating object allocated bw is 0");
     is($updatingBW->{BANDWIDTH_REQUESTED}, undef, "$msg: updating object requested bw is undef");
 
@@ -104,12 +104,12 @@ sub testStatusChange {
     is($offlineBW->registerUpdateSuccessful(), ERROR_GENERIC, "$msg: cannot register a successful update on an offline bw");
     is($runningBW->registerUpdateSuccessful(), ERROR_GENERIC, "$msg: cannot register a successful update on an online bw");
     
-    is($updatingBW->{STATUS}, STATUS_BOD_UPDATING, "$msg: updating object status is ok");
+    is($updatingBW->{STATUS}, STATUS_UPDATING, "$msg: updating object status is ok");
     is($updatingBW->{BANDWIDTH_ALLOCATED}, 0, "$msg: updating object allocated bw is 0");
     is($updatingBW->{BANDWIDTH_REQUESTED}, 500, "$msg: updating object requested bw is 500");
     
     is($updatingBW->registerUpdateSuccessful(), OK, "$msg: registered update success on updating bw");
-    is($updatingBW->{STATUS}, STATUS_BOD_ONLINE, "$msg: updating object status is ok");
+    is($updatingBW->{STATUS}, STATUS_ONLINE, "$msg: updating object status is ok");
     is($updatingBW->{BANDWIDTH_ALLOCATED}, 500, "$msg: updating object allocated bw is 500");
     is($updatingBW->{BANDWIDTH_REQUESTED}, undef, "$msg: updating object requested bw is undef");
 }

@@ -454,8 +454,8 @@ sub testRCCreatesRequests {
         ok($circuitManager->{RESOURCES}{$circuit1->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 1 exists in the circuit manager");
         ok($circuitManager->{RESOURCES}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager");
 
-        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_REQUESTING, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_UPDATING, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_UPDATING, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
     # Intermediate test that checks that requests were switched to active circuits
@@ -482,11 +482,11 @@ sub testRCCreatesRequests {
         is($circuit2->{IP_B}, '188.184.134.192', "TestNormalFunctionality->requestCircuit - circuit 2 to ip ok");
         ok($circuit2->{LIFETIME}, "TestNormalFunctionality->requestCircuit - circuit 2 has a life set");
 
-        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit1->{NAME}}{STATUS}, STATUS_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{$circuit2->{NAME}}{STATUS}, STATUS_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
-    # Intermediate test that checks that the circuit which had a lifetime expired
+    # Intermediate test that checks that the circuit which had a lifetime, expired
     sub iTestSwitchToOffline {
         my $circuitManager = $_[ARG0];
 
@@ -499,11 +499,11 @@ sub testRCCreatesRequests {
         ok(-e $fileOff2, "TestNormalFunctionality->requestCircuit - circuit 2 has been declared as offline");
 
         my ($circuit2, $code2) = &openState($fileOff2);
-        is($circuit2->{STATUS}, STATUS_CIRCUIT_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 is indeed offline");
+        is($circuit2->{STATUS}, STATUS_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 is indeed offline");
 
         ok(!$circuitManager->{RESOURCES}{$circuit2->{NAME}}, "TestNormalFunctionality->requestCircuit - circuit 2 exists in the circuit manager's history");
-        is($circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}{STATUS}, STATUS_CIRCUIT_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
-        is($circuitManager->{RESOURCE_HISTORY}{$circuit2->{NAME}}{$circuit2->{ID}}{STATUS}, STATUS_CIRCUIT_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
+        is($circuitManager->{RESOURCES}{'T2_ANSE_CERN_1-to-T2_ANSE_CERN_2'}{STATUS}, STATUS_ONLINE, "TestNormalFunctionality->requestCircuit - circuit 1 status in circuit manager is correct");
+        is($circuitManager->{RESOURCE_HISTORY}{$circuit2->{NAME}}{$circuit2->{ID}}{STATUS}, STATUS_OFFLINE, "TestNormalFunctionality->requestCircuit - circuit 2 status in circuit manager is correct");
     }
 
     my ($circuitManager, $session) = setupResourceManager(0.7, 'creating-circuit-requests.log', undef,
