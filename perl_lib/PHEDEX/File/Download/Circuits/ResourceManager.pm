@@ -93,7 +93,8 @@ sub new {
 
     # Load circuit booking backend
     my $backend = $args{BACKEND_TYPE};
-    my %backendArgs = %{$args{BACKEND_ARGS}} unless ! defined $args{BACKEND_ARGS};
+    my %backendArgs = defined %{$args{BACKEND_ARGS}} ? %{$args{BACKEND_ARGS}} : undef;
+
     eval ("use PHEDEX::File::Download::Circuits::Backend::$backend");
     do { chomp ($@); die "Failed to load backend: $@\n" } if $@;
     $self->{BACKEND} = eval("new PHEDEX::File::Download::Circuits::Backend::$backend(%backendArgs)");
@@ -151,7 +152,7 @@ sub getManagedResource {
     
     if (! defined $nodeA || ! defined $nodeB) {
         $self->Logmsg("$msg: Cannot do anything without valid nodes");
-        return undef;
+        return;
     }
     
     my $linkID = &getPath($nodeA, $nodeB);
@@ -159,12 +160,12 @@ sub getManagedResource {
     
     if (! defined $resource) {
         $self->Logmsg("$msg: Unable to find useful resources");
-        return undef;
+        return;
     }
     
     if ($resource->{STATUS} == STATUS_UPDATING || $resource->{STATUS} == STATUS_UPDATING) {
         $self->Logmsg("$msg: Found resources but they are busy with updates");
-        return undef;
+        return;
     }
     
     # If we didn't define the type or the type matches what we requested, return the resource which we found
@@ -173,7 +174,7 @@ sub getManagedResource {
         return $resource;
     } else {
         $self->Logmsg("$msg: Found resources but it's not matching what we requested");
-        return undef;
+        return;
     }
 }
 
@@ -189,7 +190,7 @@ sub canRequestResource {
     
     if (! defined $nodeA || ! defined $nodeB || ! defined $type) {
         $self->Logmsg("$msg: Cannot do anything without valid parameters");
-        return undef;
+        return;
     }
     
     my $linkID = &getPath($nodeA, $nodeB);
@@ -496,26 +497,26 @@ sub requestResource {
     # Check if link is defined
     if (!defined $nodeA || !defined $nodeB) {
         $self->Logmsg("$msg: Provided link is invalid - will not attempt a request");
-        return undef;
+        return;
     }
 
     # Check with circuit booking backend to see if the nodes actually support circuits
     if (! $self->{BACKEND}->checkLinkSupport($nodeA, $nodeB)) {
         $self->Logmsg("$msg: Provided link does not support managed resources");
-        return undef;
+        return;
     }
 
     my $linkName = &getPath($nodeA, $nodeB);
 
     if ($self->{LINKS_BLACKLISTED}{$linkName}) {
         $self->Logmsg("$msg: Skipping request for $linkName since it is currently blacklisted");
-        return undef;
+        return;
     }
 
     if (defined $self->{RESOURCES}{$linkName} && 
         $self->{RESOURCES}{$linkName}{RESOURCE_TYPE} ne $type) {
         $self->Logmsg("$msg: There's a resource already provisioned and it's not the type you requested");
-        return undef;
+        return;
     }
 
     return $linkName;

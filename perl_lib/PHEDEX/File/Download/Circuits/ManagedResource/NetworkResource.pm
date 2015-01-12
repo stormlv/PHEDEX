@@ -21,6 +21,12 @@ our @EXPORT = qw(compareResource openState formattedTime getPath);
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 1;
 
+=pod
+
+This is the base object which describes the common functionality containted by circuits and bandwidth (BOD) objects
+
+=cut
+
 sub new
 {
     my $proto = shift;
@@ -67,7 +73,10 @@ sub new
     return $self;
 }
 
-# It will compare any object made of SCALAR, ARRAY and HASH
+=item compareResource(object1, object2)
+This function will compare any object made of SCALAR, ARRAY and HASH
+=cut
+
 sub compareResource {
     my ($object1, $object2) = @_;
 
@@ -149,14 +158,14 @@ sub getSavePaths{
         
     if (! defined $self->{ID}) {
         $self->Logmsg("$msg: Cannot generate a save name for a resource which is not initialised");
-        return undef;
+        return;
     }
     
     my ($savePath, $saveTime) = $self->getSaveParams();
 
     if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
         $self->Logmsg("$msg: Invalid parameters in generating a circuit file name");
-        return undef;
+        return;
     }
 
     my $partialID = substr($self->{ID}, 1, 7);
@@ -246,7 +255,7 @@ sub openState {
         ! defined $resource->{BOOKING_BACKEND} ||
         ! defined $resource->{STATE_DIR} ||
         ! defined $resource->{LAST_STATUS_CHANGE}) {
-        return undef;
+        return;
     }
 
     return $resource;
@@ -284,7 +293,7 @@ sub getPath {
 sub formattedTime{
     my ($time, $includeMilis) = @_;
 
-    return undef if ! defined $time;
+    return if ! defined $time;
 
     my $milis = '';
 

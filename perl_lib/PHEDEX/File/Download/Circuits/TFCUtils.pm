@@ -46,9 +46,11 @@ sub replaceHostname
     my ($pfn, $protocol, $circuit_ip, $circuit_port) = @_;
 
     # Don't attempt to do anything if the provided IP is invalid
-    return undef if (!defined $pfn || !defined $protocol ||
-                     determineAddressType($circuit_ip) < 0 ||
-                    (defined $circuit_port && checkPort($circuit_port) < 0));
+    return if (
+                !defined $pfn || !defined $protocol ||
+                determineAddressType($circuit_ip) < 0 ||
+                (defined $circuit_port && checkPort($circuit_port) < 0)
+              );
 
     # Find the hostname or ip in the PFN
     my $pfnMatch = "^($protocol:\/\/)($validIpv4AddressRegex|$validIpv6AddressRegex|$validHostnameRegex)((:$validPortRegex)?)(\/.*)\$";
@@ -65,7 +67,7 @@ sub replaceHostname
 
     $circuit_port = $extractedPort if (checkPort($circuit_port) == PORT_INVALID && checkPort($extractedPort));
 
-    return undef if (!defined $extractedHost);
+    return if (!defined $extractedHost);
 
     my $newPFN = "$protocol://".
                  (determineAddressType($circuit_ip) == ADDRESS_IPv4 ||

@@ -212,7 +212,7 @@ sub registerTransferFailure {
 # Returns an array with all the details regarding the failed transfers
 # that occured on this circuit. Each element in the array is in the form
 # of [time, reason]
-sub getFailedTransfers() {
+sub getFailedTransfers {
     my $self = shift;
     return $self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS};
 }

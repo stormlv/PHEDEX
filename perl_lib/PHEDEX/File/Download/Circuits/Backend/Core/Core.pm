@@ -54,7 +54,7 @@ sub checkLinkSupport {
 # Returns the advertised bandwidth that can be had between the two provided nodes
 sub getCircuitBandwidth {
     my ($self, $from_node, $to_node) = @_;
-    return undef unless $self->checkLinkSupport($from_node, $to_node);
+    return unless $self->checkLinkSupport($from_node, $to_node);
     return min $self->{AGENT_TRANSLATION}{$from_node}{BANDWIDTH}, $self->{AGENT_TRANSLATION}{$to_node}{BANDWIDTH};
 }
 

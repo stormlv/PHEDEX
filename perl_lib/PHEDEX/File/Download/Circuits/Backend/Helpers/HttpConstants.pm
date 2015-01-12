@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Helpers::HttpConstants;;
+package PHEDEX::File::Download::Circuits::Backend::Helpers::HttpConstants;
 
 use warnings;
 use strict;

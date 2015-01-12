@@ -67,9 +67,9 @@ sub new {
 # Returns an array of lines
 sub _readFromWeb {
     my ($self, $url) = @_;
-    return undef if ! defined $url;
+    return if ! defined $url;
     my $content = get $url;
-    return undef if ! defined $content;
+    return if ! defined $content;
     return split /\n/, $content;
 }
 
@@ -119,8 +119,8 @@ sub _getAgentMapping{
 sub _buildAgentTranslationHash {
     my $self = shift;
 
-    my $lookup = $self->_getLookupViaWeb() if $self->{WEB_LOOKUP};
-    my $phedexMapping = $self->_getAgentMapping() if $self->{WEB_MAPPING};
+    my $lookup = defined $self->{WEB_LOOKUP} ? $self->_getLookupViaWeb() : undef;
+    my $phedexMapping = defined $self->{WEB_MAPPING}? $self->_getAgentMapping() : undef;
 
     my $msg = "Dynes->_buildAgentTranslationHash";
 
