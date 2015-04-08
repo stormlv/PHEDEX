@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::ManagedResource::TestBandwidth;
+package PHEDEX::Tests::File::Download::NetworkResource::TestBandwidth;
 
 use strict;
 use warnings;

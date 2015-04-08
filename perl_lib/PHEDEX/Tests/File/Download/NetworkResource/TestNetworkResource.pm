@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::TestNetworkResource;
+package PHEDEX::Tests::File::Download::NetworkResource::TestNetworkResource;
 
 use strict;
 use warnings;
@@ -6,8 +6,9 @@ use warnings;
 use IO::File;
 use Test::More;
 
-use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::Helpers::GenericFunctions;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
 
 # Test the "getPath" function - used to return the link name 

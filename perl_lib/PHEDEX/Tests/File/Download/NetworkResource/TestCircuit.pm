@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::ManagedResource::TestCircuit;
+package PHEDEX::Tests::File::Download::NetworkResource::TestCircuit;
 
 use strict;
 use warnings;
@@ -93,7 +93,7 @@ sub testSaveErrorHandling {
     is($testCircuit2->saveState(), ERROR_SAVING, "$msg: Unable to save circuit since we cannot create state folder");
 
     File::Path::make_path('/tmp/managed/circuits');
-    File::Path::make_path('/tmp/managed/circuits/offline', { mode => 0555 });
+    File::Path::make_path('/tmp/managed/circuits/offline', { mode => 555 });
     $testCircuit2->{STATE_DIR} = '/tmp/managed/circuits';
     is($testCircuit2->saveState(), ERROR_SAVING, "$msg: Unable to save since circuit cannot write to state folder");
 

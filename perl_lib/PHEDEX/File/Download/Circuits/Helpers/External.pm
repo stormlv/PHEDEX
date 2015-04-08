@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Helpers::External;
+package PHEDEX::File::Download::Circuits::Helpers::External;
 
 use strict;
 use warnings;
@@ -56,11 +56,16 @@ sub startCommand {
 
                 # Start a new wheel running the specified command
                 my $task = POE::Wheel::Run->new(
-                    Program => $command,
-                    StdoutEvent  => "handleTaskStdOut",
-                    StderrEvent  => "handleTaskStdError",
-                    ErrorEvent   => "handleTaskFailed",
-                    CloseEvent   => "handleTaskClose",
+                    Program         => $command,
+                    Conduit         => "pty-pipe",
+
+                    StdoutEvent     => "handleTaskStdOut",
+                    StderrEvent     => "handleTaskStdError",
+                    ErrorEvent      => "handleTaskFailed",
+                    CloseEvent      => "handleTaskClose",
+
+                    StdioDriver     => POE::Driver::SysRW->new(),
+                    StdinFilter     => POE::Filter::Line->new(Literal => "\n"),
                 );
 
                 $pid = $task->PID;
@@ -90,11 +95,8 @@ sub startCommand {
         },
         object_states => [
             $self => {
-                # The same object method (handleTaskStdIO) will handle the two events (OUT/ERR)
-                # This is because we want to distinguish (via the STATE argument) between which event
-                # was actually triggered
-                handleTaskStdOut    =>  'handleTaskStdIO',
-                handleTaskStdError  =>  'handleTaskStdIO',
+                handleTaskStdOut    =>  'handleTaskStdOut',
+                handleTaskStdError  =>  'handleTaskStdOut',
                 handleTaskClose     =>  'handleTaskClose',
                 handleTaskSignal    =>  'handleTaskSignal',
                 handleTaskTimeout   =>  'handleTaskTimeout',
@@ -105,14 +107,24 @@ sub startCommand {
     return $pid;
 }
 
+sub getTaskByPID {
+    my ($self, $pid) = @_;
+    
+    if (! defined $self->{RUNNING_TASKS}->{$pid}) {
+        $self->Logmsg("Cannot find the requested PID");
+        return;
+    }
+    
+    return $self->{RUNNING_TASKS}->{$pid}->{TASK};
+}
 # Wheel event for both the StdOut and StdErr output
 # The action specified for this task will be called with
 # with the following parameters (PID, event name, output)
 # Output will be handled to the specified action and parsed there (not by this class)
-sub handleTaskStdIO {
+sub handleTaskStdOut {
     my ($self, $sendingEvent, $heap, $output, $wheelId) = @_[OBJECT, STATE, HEAP, ARG0, ARG1];
 
-    my $msg = "External->handleTaskStdIO";
+    my $msg = "External->handleTaskStdOut";
 
     my $task = $heap->{tasks_by_id}{$wheelId};
     my $pid = $task->PID;
@@ -126,6 +138,7 @@ sub handleTaskStdIO {
     # If an action was specified, call it
     if (defined $action) {
         my @arguments;
+        $arguments[EXTERNAL_TASK] = $task;
         $arguments[EXTERNAL_PID] = $pid;
         $arguments[EXTERNAL_EVENTNAME] = $sendingEvent;
         $arguments[EXTERNAL_OUTPUT] = $output;

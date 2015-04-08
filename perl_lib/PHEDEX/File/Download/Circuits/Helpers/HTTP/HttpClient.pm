@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
+package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
 
 use strict;
 use warnings;
@@ -13,7 +13,7 @@ use POE::Component::Client::HTTP;
 use POE;
 use Switch;
 
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpConstants;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpConstants;
 
 sub new {
     my $proto = shift;

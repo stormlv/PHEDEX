@@ -110,6 +110,4 @@ sub getTerminationScript {
     return $script;
 }
 
-
-
 1;

@@ -6,12 +6,14 @@ use warnings;
 use base 'PHEDEX::Core::Logging', 'Exporter';
 
 use List::Util qw(min);
+use Module::Load;
 use POE;
 use Switch;
 
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer;
+use PHEDEX::File::Download::Circuits::Helpers::GenericFunctions;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::File::Download::Circuits::Constants;
@@ -27,7 +29,7 @@ my $ownHandles = {
 my $backHandles = {
 	BACKEND_UPDATE_BANDWIDTH    =>      'backendUpdateBandwidth',
     BACKEND_REQUEST_CIRCUIT     =>      'backendRequestCircuit',
-    BACKEND_TEARDOWN_CIRCUIT   	=>      'backendTeardownCircuit',
+    BACKEND_TEARDOWN_CIRCUIT    =>      'backendTeardownCircuit',
 };
 
 # Right now we only support the creation of *one* circuit for each link {(from, to) node pair}
@@ -39,7 +41,6 @@ sub new {
     my %params = (
 
             # Main circuit related parameters
-            # TODO: Rename circuits -> resource
             # TODO: Allow the use of more than one circuit/bandwidth available per link pair
             RESOURCES                       => {},          # All online resources grouped by link (requesting/established circuits, online/updating bandwidth)
             STATE_DIR                       => '',          # Default location to place circuit state files
@@ -51,7 +52,7 @@ sub new {
             BACKEND                         => undef,
 
             # Parameters related to circuit history
-            RESOURCE_HISTORY                => {},          # Last MAX_HISTORY_SIZE circuits, which are offline, grouped by link then ID (LINK -> ID -> [CIRCUIT1,...])
+            RESOURCE_HISTORY                => {},          # Last MAX_HISTORY_SIZE circuits, which are offline, grouped by link the ID (LINK -> ID -> [CIRCUIT1,...])
             RESOURCE_HISTORY_QUEUE          => [],          # Queue used to keep track of previously active resources (now in 'offline' mode)
             MAX_HISTORY_SIZE                => 1000,        # Keep the last xx circuits in memory
             SYNC_HISTORY_FOLDER             => 0,           # If this is set, it will also remove circuits from 'offline' folder
@@ -60,11 +61,11 @@ sub new {
             # Parameters related to blacklisting circuist
 	  	    LINKS_BLACKLISTED               => {},          # All links currently blacklisted from creating circuits
             BLACKLIST_DURATION              => HOUR,        # Time in seconds, after which a circuit will be reconsidered
-            MAX_HOURLY_FAILURE_RATE         => 100,         # Maximum of 100 transfers in one hour can fail
+            MAX_HOURLY_FAILURE_RATE         => 100,         # Maximum of 100 (file) transfers in one hour can fail. Note that failure can be caused by other reasons than circuit prb.
 
             # Parameters related to various timings
             PERIOD_CONSISTENCY_CHECK        => MINUTE,      # Period for event verify_state_consistency
-            REQUEST_TIMEOUT         => 5 * MINUTE,  # If we don't get it by then, we'll most likely not get them at all
+            REQUEST_TIMEOUT                 => 5 * MINUTE,  # If we don't get it by then, we'll most likely not get them at all
 
             # POE related stuff
             SESSION_ID                      => undef,
@@ -94,14 +95,23 @@ sub new {
     # Load circuit booking backend
     my $backend = $args{BACKEND_TYPE};
     my %backendArgs = defined %{$args{BACKEND_ARGS}} ? %{$args{BACKEND_ARGS}} : undef;
-
-    eval ("use PHEDEX::File::Download::Circuits::Backend::$backend");
-    do { chomp ($@); die "Failed to load backend: $@\n" } if $@;
-    $self->{BACKEND} = eval("new PHEDEX::File::Download::Circuits::Backend::$backend(%backendArgs)");
-    do { chomp ($@); die "Failed to create backend: $@\n" } if $@;
-
+    
+    # Import and create backend
+    eval {
+        # Import backend at runtime
+        my $module = "PHEDEX::File::Download::Circuits::Backend::$backend";
+        (my $file = $module) =~ s|::|/|g;
+        require $file . '.pm';
+        $module->import();
+        
+        # Create new backend after import
+        $self->{BACKEND} = new $module(%backendArgs);
+    } or do {
+        die "Failed to load/create backend: $@\n"
+    };
+    
     if ($self->{HTTP_CONTROL}) {
-        $self->{HTTP_SERVER} = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer->new();
+        $self->{HTTP_SERVER} = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer->new();
         $self->{HTTP_SERVER}->startServer($self->{HTTP_HOSTNAME}, $self->{HTTP_PORT});
     }
 
@@ -326,7 +336,7 @@ sub verifyStateConsistency
             };
 
             # Skip this one if we found an identical circuit in memory
-            if ($resource->compareResource($inMemoryResource)) {
+            if (&compareResource($self, $inMemoryResource)) {
                 $self->Logmsg("$msg: Skipping identical in-memory resource") if ($self->{VERBOSE});
                 next;
             }

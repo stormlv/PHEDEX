@@ -1,4 +1,5 @@
-package PHEDEX::Tests::File::Download::TestDynesStates;
+package PHEDEX::Tests::File::Download::CircuitBackends::TestML;
+
 
 use strict;
 use warnings;

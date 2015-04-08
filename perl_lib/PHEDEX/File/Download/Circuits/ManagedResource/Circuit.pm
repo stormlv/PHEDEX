@@ -32,8 +32,8 @@ sub new
             LIFETIME                =>  undef,
             REQUEST_TIME            =>  undef,          # Time the circuit was requested
             ESTABLISHED_TIME        =>  undef,          # Time the circuit was established
-            IP_B                    =>  undef,
             IP_A                    =>  undef,
+            IP_B                    =>  undef,
 
             FAILURES                =>  {
                                             CIRCUIT_FAILED_REQUEST          =>      undef,

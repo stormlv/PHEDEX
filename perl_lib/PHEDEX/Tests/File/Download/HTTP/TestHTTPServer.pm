@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::TestHTTPServer;
+package PHEDEX::Tests::File::Download::HTTP::TestHTTPServer;
 
 use warnings;
 use strict;
@@ -8,8 +8,8 @@ use POE;
 use Test::More;
 
 # PhEDEx imports
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 
 # Create master session
 POE::Session->create(
@@ -19,7 +19,7 @@ POE::Session->create(
 
                 # Create a http client and spawn it. It has been tested independently of this server
                 # so we should be ok with using it these tests
-                my $httpClient = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient->new();
+                my $httpClient = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient->new();
                 $httpClient->spawn();
 
                 # Setup the various tests that we need to do...
@@ -53,7 +53,7 @@ sub runGetMethodTests {
     my ($kernel, $session, $httpClient) = @_[KERNEL, SESSION, ARG0];
 
     # Create the server
-    my $httpServer = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer->new();
+    my $httpServer = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer->new();
     $httpServer->startServer("localhost", 8080);
 
     # Test data

@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Dynes;
+package PHEDEX::File::Download::Circuits::Dynes::Dynes;
 
 use strict;
 use warnings;
@@ -7,9 +7,9 @@ use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::
 
 # PhEDEx imports
 use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::External;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates;
+use PHEDEX::File::Download::Circuits::Backend::Dynes::DynesStates;
 use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::Helpers::External;
 use PHEDEX::File::Download::Circuits::TFCUtils;
 
 # Other imports
@@ -57,7 +57,7 @@ sub new {
 
     die "Could not build the agent translation hash" unless defined $self->{AGENT_TRANSLATION};
 
-    $self->{TASKER} = PHEDEX::File::Download::Circuits::Backend::Core::External->new();
+    $self->{TASKER} = PHEDEX::File::Download::Circuits::Helpers::External->new();
 
     bless $self, $class;
     return $self;
@@ -229,7 +229,7 @@ sub backendRequestCircuit {
     my ($self, $kernel, $session, $circuit, $requestCallback, $infoCallback, $errorCallback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1, ARG2, ARG3];
 
     my $pid = $self->{TASKER}->startCommand('cat ../TestData/CircuitOK_PingOK.log', $self->{ACTION_HANDLER}, $self->{TIMEOUT});
-    my $state = PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates->new();
+    my $state = PHEDEX::File::Download::Circuits::Backend::Dynes::DynesStates->new();
 
     my $wrapper = {
         CID             =>  $circuit->{ID},         # Circuit ID
@@ -269,8 +269,6 @@ sub backendTeardownCircuit {
 
     # Kill external task
     $self->{TASKER}->kill_task($pid);
-
-
 }
 
 1;

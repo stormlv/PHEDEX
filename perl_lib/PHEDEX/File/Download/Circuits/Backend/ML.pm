@@ -7,8 +7,8 @@ use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::
 
 # PhEDEx imports
 use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 use PHEDEX::File::Download::Circuits::Constants;
 
 use HTTP::Status qw(:constants);
@@ -38,7 +38,7 @@ sub new {
     my $self = $class->SUPER::new(%args);
 
     # Start the HTTP client
-    $self->{HTTP_CLIENT} = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient->new();
+    $self->{HTTP_CLIENT} = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient->new();
     $self->{HTTP_CLIENT}->spawn();
 
     bless $self, $class;

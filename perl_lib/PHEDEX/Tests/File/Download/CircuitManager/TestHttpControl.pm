@@ -9,7 +9,7 @@ use POE;
 use POSIX;
 use Test::More;
 
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
 use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 use PHEDEX::File::Download::Circuits::ResourceManager;
@@ -24,7 +24,7 @@ sub testHttpCircuitLifecycle {
     our $userAgent;
 
     sub iStartUserAgent {
-        $userAgent = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient->new();
+        $userAgent = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient->new();
         $userAgent->spawn();
     }
     

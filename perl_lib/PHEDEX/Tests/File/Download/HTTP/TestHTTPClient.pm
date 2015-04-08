@@ -1,12 +1,12 @@
-package PHEDEX::Tests::File::Download::TestHTTPClient;
+package PHEDEX::Tests::File::Download::HTTP::TestHTTPClient;
 
 use warnings;
 use strict;
 
 use JSON::XS;
 use POE;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpConstants;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpConstants;
 use Test::More;
 
 # Create master session
@@ -16,7 +16,7 @@ POE::Session->create(
                 my ($kernel, $session) = @_[KERNEL, SESSION];
 
                 # Create a user agent and spawn it
-                my $userAgent = PHEDEX::File::Download::Circuits::Backend::Helpers::HttpClient->new();
+                my $userAgent = PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient->new();
                 $userAgent->spawn();
 
                 # Setup the various tests that we need to do...

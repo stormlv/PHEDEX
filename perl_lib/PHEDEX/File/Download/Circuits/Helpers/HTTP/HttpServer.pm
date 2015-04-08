@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Helpers::HttpServer;
+package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 
 use strict;
 use warnings;
@@ -12,7 +12,7 @@ use JSON::XS;
 use POE qw(Component::Server::TCP Filter::HTTPD);
 use Switch;
 
-use PHEDEX::File::Download::Circuits::Backend::Helpers::HttpConstants;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpConstants;
 
 sub new {
     my $proto = shift;

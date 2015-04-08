@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::Backend::Helpers::DynesStates;
+package PHEDEX::File::Download::Circuits::Backend::Dynes::DynesStates;
 
 use strict;
 use warnings;

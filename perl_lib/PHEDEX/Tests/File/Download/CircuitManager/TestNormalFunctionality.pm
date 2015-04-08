@@ -1,4 +1,4 @@
-package PHEDEX::Tests::File::Download::TestNormalFunctionality;
+package PHEDEX::Tests::File::Download::CircuitManager::TestNormalFunctionality;
 
 use strict;
 use warnings;

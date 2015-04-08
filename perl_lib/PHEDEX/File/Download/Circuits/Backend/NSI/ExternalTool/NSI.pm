@@ -7,10 +7,10 @@ use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::
 
 # PhEDEx imports
 use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
-use PHEDEX::File::Download::Circuits::Backend::Helpers::External;
 use PHEDEX::File::Download::Circuits::Backend::NSI::ExternalTool::Reservation;
 use PHEDEX::File::Download::Circuits::Backend::NSI::ExternalTool::ReservationConstants;
 use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::Helpers::External;
 
 
 # Other imports
@@ -89,7 +89,7 @@ sub _poe_init
     $self->SUPER::_poe_init($kernel, $session);
     
     # Create instance running capable of running external tools
-    $self->{TASKER} = PHEDEX::File::Download::Circuits::Backend::Helpers::External->new();
+    $self->{TASKER} = PHEDEX::File::Download::Circuits::Helpers::External->new();
     
     # Launch an instance of the NSI CLI
     chdir $self->{NSI_TOOL_LOCATION};
