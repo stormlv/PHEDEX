@@ -3,15 +3,16 @@ package PHEDEX::File::Download::Circuits::Backend::Core::IDC;
 use strict;
 use warnings;
 
-# This could very well be a simple hash...
 sub new
 {
     my $proto = shift;
     my $class = ref($proto) || $proto;
 
     my %params = (
-            DYNES_NAME  =>      undef,
-            PHEDEX_NAME =>      undef,
+            SITE_NAME       =>      undef,  # Name of the site from applicantion's point of view (ex. for PhEDEx: T2_ANSE_Geneva)
+            ENDPOINT_NAME   =>      undef,  # Name of circuit endpoint servicing the site (ex. for NSI: name of the STP)
+
+            
             IP          =>      undef,
             PORT        =>      undef,
             BANDWIDTH   =>      1000,

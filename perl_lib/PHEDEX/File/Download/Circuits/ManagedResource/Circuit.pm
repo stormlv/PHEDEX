@@ -5,9 +5,10 @@ use warnings;
 
 use base 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource', 'PHEDEX::Core::Logging';
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
-use PHEDEX::File::Download::Circuits::TFCUtils;
 
 use Switch;
 use Scalar::Util qw(blessed);
@@ -119,8 +120,8 @@ sub registerEstablished {
     #   - The status is not prior STATUS_UPDATING
     #   - both $ipA and $ipB are not valid addresses
     if ($self->{STATUS} != STATUS_UPDATING ||
-        determineAddressType($ipA) == ADDRESS_INVALID ||
-        determineAddressType($ipB) == ADDRESS_INVALID) {
+        determineAddressType($ipA) eq ADDRESS_INVALID ||
+        determineAddressType($ipB) eq ADDRESS_INVALID) {
         $self->Logmsg("$msg: Cannot change status to STATUS_ONLINE");
         return ERROR_GENERIC;
     }

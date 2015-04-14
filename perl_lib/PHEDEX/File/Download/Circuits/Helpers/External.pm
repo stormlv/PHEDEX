@@ -8,7 +8,7 @@ use base 'PHEDEX::Core::Logging';
 use POE;
 use POE::Component::Child;
 
-use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
 
 sub new {
     my $proto = shift;

@@ -13,7 +13,7 @@ use Time::HiRes qw(time);
 
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
 
 our @EXPORT = qw(openState formattedTime getPath);
 

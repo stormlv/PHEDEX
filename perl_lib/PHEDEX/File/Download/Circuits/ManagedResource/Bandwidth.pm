@@ -9,7 +9,7 @@ use POE;
 use POSIX "fmod";
 use Switch;
 
-use PHEDEX::File::Download::Circuits::Constants;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 use PHEDEX::Core::Timing;
 

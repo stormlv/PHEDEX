@@ -1,4 +1,4 @@
-# This object extends the File::Download::Agent by adding circuit awareness
+# This object extends the File::Download::Agent in order to add circuit awareness
 package PHEDEX::File::Download::CircuitAgent;
 
 use strict;
@@ -11,14 +11,15 @@ use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
 use PHEDEX::Core::DB;
 use PHEDEX::Error::Constants;
-use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
-use PHEDEX::File::Download::Circuits::Constants;
-use PHEDEX::File::Download::Circuits::ResourceManager;
-use PHEDEX::File::Download::Circuits::TFCUtils;
 
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
+use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManager;
+
+use Data::Dumper;
 use feature qw(switch);
 use List::Util qw(min max sum);
-use Data::Dumper;
 use LWP::Simple;
 use POSIX;
 use POE;
@@ -47,7 +48,7 @@ sub new
     my $self = $class->SUPER::new(%args);
 
     # Create circuit manager
-    $self->{CIRCUIT_MANAGER} = PHEDEX::File::Download::Circuits::ResourceManager->new(CIRCUITDIR   => "$self->{DROPDIR}"."/circuits",
+    $self->{RESOURCE_MANAGER} = PHEDEX::File::Download::Circuits::ResourceManager->new(CIRCUITDIR   => "$self->{DROPDIR}"."/circuits",
                                                                                       BACKEND_TYPE => $self->{CIRCUIT_BACKEND},
                                                                                       BACKEND_ARGS => {AGENT_TRANSLATION_FILE => '/data/agent_ips.txt'},
                                                                                       VERBOSE      => $self->{VERBOSE});
@@ -58,7 +59,7 @@ sub new
 		$self->{JOBMANAGER}->killAllJobs();
 		
 		# Cancels requests in progress and tears_down existing circuits
-		$self->{CIRCUIT_MANAGER}->stop();
+		$self->{RESOURCE_MANAGER}->stop();
     };
 
     bless $self, $class;
@@ -77,7 +78,7 @@ sub _poe_init
     $self->SUPER::_poe_init(@superArgs);
 
     # Hand the session over to the circuit manager as well
-    $self->{CIRCUIT_MANAGER}->_poe_init($kernel, $session);
+    $self->{RESOURCE_MANAGER}->_poe_init($kernel, $session);
 
     # And we handle the ones related to circuits
     my @poe_subs = qw(check_workload);
@@ -97,7 +98,7 @@ sub _poe_init
 sub check_workload
 {
     my ($self, $kernel, $session) = @_[ OBJECT, KERNEL, SESSION ];
-    my ($tasks, $circuitManager) = ($self->{TASKS}, $self->{CIRCUIT_MANAGER});
+    my ($tasks, $circuitManager) = ($self->{TASKS}, $self->{RESOURCE_MANAGER});
 
     my $mess = "CircuitAgent->check_workload";
 
@@ -246,7 +247,7 @@ sub check_workload
 # Tells us if we should request a circuit or not
 sub _should_request_circuit {
     my ($self, $linkID, $linkData) = @_;
-    my $circuitManager = $self->{CIRCUIT_MANAGER};
+    my $circuitManager = $self->{RESOURCE_MANAGER};
 
     my $mess = "CircuitAgent->_should_request_circuit";
 
@@ -286,7 +287,7 @@ sub transfer_task
     my ($fromProtocol, $toProtocol) = ($task->{FROM_PROTOS}[0], $task->{TO_PROTOS}[0]);
 
     # Check to see if a circuit is online for this pair of nodes
-    my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, STATUS_ONLINE);
+    my $circuit = $self->{RESOURCE_MANAGER}->checkCircuit($task->{FROM_NODE}, $task->{TO_NODE}, STATUS_ONLINE);
 
     # A circuit is established, better as well use it
     # TODO: We probably should do a bulk change of PFNs per job, instead of per task in job
@@ -299,8 +300,8 @@ sub transfer_task
     if (defined $circuit) {
         my ($fromIP, $toIP) = ($circuit->{IP_A}, $circuit->{IP_B});
 
-        my $fromPFN = replaceHostname($task->{FROM_PFN}, $fromProtocol, $fromIP, );
-        my $toPFN = replaceHostname($task->{TO_PFN}, $toProtocol, $toIP);
+        my $fromPFN = replaceHostnameInURL($task->{FROM_PFN}, $fromProtocol, $fromIP, );
+        my $toPFN = replaceHostnameInURL($task->{TO_PFN}, $toProtocol, $toIP);
 
         if (defined $toPFN && defined $fromPFN) {
             $self->Logmsg("$mess: Circuit detected! Replaced TO/FROM PFN. New PFNs: $toPFN, $fromPFN");
@@ -347,14 +348,14 @@ sub finish_task
     if ($task->{REPORT_CODE} != 0 || $task->{XFER_CODE} != 0) {
 
         # Make sure that the circuit has not expired yet
-        my $circuit = $self->{CIRCUIT_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, STATUS_ONLINE);
+        my $circuit = $self->{RESOURCE_MANAGER}->checkCircuit($task->{FROM_NODE},  $task->{TO_NODE}, STATUS_ONLINE);
         return 1 unless defined $circuit;
 
         my $linkName = $circuit->getLinkName();
 
         $self->Logmsg("$mess: Transfer failed on $linkName");
 
-        $self->{CIRCUIT_MANAGER}->transferFailed($circuit, $task);
+        $self->{RESOURCE_MANAGER}->transferFailed($circuit, $task);
     }
 
     # Indicate success.
@@ -372,7 +373,7 @@ sub stop
 
     $self->Logmsg("CircuitAgent->stop: Propagating stop message to CircuitManager as well") if ($self->{VERBOSE});
     # Then attempt to clean all circuits
-    $self->{CIRCUIT_MANAGER}->teardownAll();
+    $self->{RESOURCE_MANAGER}->teardownAll();
 }
 
 1;

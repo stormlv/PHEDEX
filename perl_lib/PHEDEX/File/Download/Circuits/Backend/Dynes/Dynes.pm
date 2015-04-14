@@ -5,17 +5,18 @@ use warnings;
 
 use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::Logging';
 
-# PhEDEx imports
-use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
-use PHEDEX::File::Download::Circuits::Backend::Dynes::DynesStates;
-use PHEDEX::File::Download::Circuits::Constants;
-use PHEDEX::File::Download::Circuits::Helpers::External;
-use PHEDEX::File::Download::Circuits::TFCUtils;
-
 # Other imports
 use LWP::Simple;
 use POE;
 use Switch;
+
+# PhEDEx imports
+use PHEDEX::File::Download::Circuits::Backend::Core::IDC;
+use PHEDEX::File::Download::Circuits::Backend::Dynes::DynesStates;
+use PHEDEX::File::Download::Circuits::Helpers::External;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
 
 sub new {
     my $proto = shift;
