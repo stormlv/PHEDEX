@@ -1,84 +1,45 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 
-use strict;
-use warnings;
+use Moose;
+use Moose::Util::TypeConstraints;
 
-use base 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource', 'PHEDEX::Core::Logging';
+extends 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource';
+
+use base 'PHEDEX::Core::Logging';
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
-use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+use PHEDEX::File::Download::Circuits::Common::Constants;
+use PHEDEX::File::Download::Circuits::Common::Failure;
+
 use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
-use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
 
 use Switch;
-use Scalar::Util qw(blessed);
 
-# Use registerRequest, registerEstablished, registerTakeDown and registerRequestFailure
-# in order to ensure a consistent state change throughout the object's lifetime
-# Do not modify these parameters directly! (unless you know what you're doing - then it's ok)
+subtype 'IP', as 'Str', where {&determineAddressType($_) ne ADDRESS_INVALID}, message { "The value you provided is not a valid hostname or IP(v4/v6)"};
 
-# Ideas for later on - unused parameters for now:
-# - SCOPE: This can be used if we'd have multiple circuits per link
-#       and we'd want a way to discriminate againts using some circuits over others
-#       (like possibly using different circuits for different protocols, etc.)
-# - BANDWIDTH_REQUESTED and BANDWIDTH_USED: could be used to track the performance of the circuit.
-sub new
-{
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
+has '+resourceType'     => (is  => 'ro', default => 'Circuit', required => 0);
+has 'establishedTime'   => (is  => 'rw', isa => 'Num');
+has 'ipA'               => (is  => 'rw', isa => 'IP');
+has 'ipB'               => (is  => 'rw', isa => 'IP');
+has 'lifetime'          => (is  => 'rw', isa => 'Num', default => 6*HOUR);
+has 'requestedTime'     => (is  => 'rw', isa => 'Num');
+has 'requestTimeout'    => (is  => 'rw', isa => 'Int', default => 5*MINUTE);
 
-    my %params = (
-            SCOPE                   =>  'GENERIC',
-            
-            LIFETIME                =>  undef,
-            REQUEST_TIME            =>  undef,          # Time the circuit was requested
-            ESTABLISHED_TIME        =>  undef,          # Time the circuit was established
-            IP_A                    =>  undef,
-            IP_B                    =>  undef,
-
-            FAILURES                =>  {
-                                            CIRCUIT_FAILED_REQUEST          =>      undef,
-                                            CIRCUIT_FAILED_TRANSFERS        =>      [],
-                                        },
-
-            CIRCUIT_DEFAULT_LIFETIME      => 5*HOUR,      # in seconds
-
-            # Performance related parameters
-            BANDWIDTH_REQUESTED     =>  undef,              # Bandwidth we requested
-    );
-				
-    my %args = (@_);
-
-    #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    bless $self, $class;
-
-    return $self;
+sub BUILD {
+    my $self = shift;
+    $self->stateDir($self->stateDir."/".$self->resourceType);
 }
 
-sub initResource {
-    my ($self, $backend, $nodeA, $nodeB, $bidirectional) = @_;
-    
-    # Do our own initialisation
-    $self->{STATE_DIR}.="/circuits";
-    $self->{STATUS} = STATUS_OFFLINE;
-    
-    return $self->SUPER::initResource($backend, CIRCUIT, $nodeA, $nodeB, $bidirectional);
-}
-
-# Returns the expiration time if LIFETIME was defined; undef otherwise
+# Returns the expiration time if the circuit is Online
 sub getExpirationTime {
     my $self = shift;
-    return $self->{STATUS} == STATUS_ONLINE &&
-           defined $self->{LIFETIME} ? $self->{ESTABLISHED_TIME} + $self->{LIFETIME} : undef;
+    return $self->status eq 'Online' && defined $self->establishedTime ? $self->establishedTime + $self->lifetime : undef;
 }
 
 # Checks to see if the circuit expired or not (if LIFETIME was defined)
 sub isExpired {
     my $self = shift;
-    my $expiration = $self->getExpirationTime();
+    my $expiration = $self->getExpirationTime;
     return defined $expiration && $expiration < &mytimeofday() ? 1 : 0;
 }
 
@@ -92,18 +53,17 @@ sub registerRequest {
     # Cannot change status to STATUS_UPDATING if
     #   - Circuit is not previously initialised
     #   - The status is not prior STATUS_OFFLINE
-    if (!defined $self->{ID} || $self->{STATUS} != STATUS_OFFLINE) {
-        $self->Logmsg("$msg: Cannot change status to STATUS_UPDATING");
+    if (!defined $self->id || $self->status ne 'Offline') {
+        $self->Logmsg("$msg: Cannot change status to pending");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_UPDATING;
-    $self->{REQUEST_TIME} = &mytimeofday();
-    $self->{LAST_STATUS_CHANGE} = $self->{REQUEST_TIME};
+    $self->status('Pending');
+    $self->requestedTime(&mytimeofday());
     
     # These two parameters can be undef
-    $self->{LIFETIME} = $lifetime;
-    $self->{BANDWIDTH_REQUESTED} = $bandwidth;
+    $self->lifetime($lifetime) if defined $lifetime;
+    $self->bandwidthRequested($bandwidth) if defined $bandwidth;
 
     $self->Logmsg("$msg: state has been switched to STATUS_UPDATING");
 
@@ -119,21 +79,20 @@ sub registerEstablished {
     # Cannot change status to STATUS_ONLINE if
     #   - The status is not prior STATUS_UPDATING
     #   - both $ipA and $ipB are not valid addresses
-    if ($self->{STATUS} != STATUS_UPDATING ||
+    if ($self->status ne 'Pending' ||
         determineAddressType($ipA) eq ADDRESS_INVALID ||
         determineAddressType($ipB) eq ADDRESS_INVALID) {
         $self->Logmsg("$msg: Cannot change status to STATUS_ONLINE");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_ONLINE;
-    $self->{ESTABLISHED_TIME} = &mytimeofday();
-    $self->{LAST_STATUS_CHANGE} = $self->{ESTABLISHED_TIME};
-    $self->{IP_A} = $ipA;
-    $self->{IP_B} = $ipB;
+    $self->status('Online');
+    $self->establishedTime(&mytimeofday());
+    $self->ipA($ipA);
+    $self->ipB($ipB);
 
     # These two can also be undef
-    $self->{BANDWIDTH_ALLOCATED} = $bandwidth;
+    $self->bandwidthAllocated($bandwidth) if defined $bandwidth;
 
     $self->Logmsg("$msg: state has been switched to STATUS_ONLINE");
     return OK;
@@ -145,13 +104,12 @@ sub registerTakeDown {
 
     my $msg = 'Circuit->registerTakeDown';
 
-    if ($self->{STATUS} != STATUS_ONLINE) {
+    if ($self->status ne 'Online') {
         $self->Logmsg("$msg: Cannot change status to STATUS_OFFLINE");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_OFFLINE;
-    $self->{LAST_STATUS_CHANGE} = &mytimeofday();
+    $self->status('Offline');
 
     $self->Logmsg("$msg: state has been switched to STATUS_OFFLINE");
     return OK;
@@ -166,27 +124,20 @@ sub registerRequestFailure {
 
     my $msg = 'Circuit->registerRequestFailure';
 
-    if ($self->{STATUS} != STATUS_UPDATING) {
+    if ($self->status ne 'Pending') {
         $self->Logmsg("$msg: Cannot register a request failure for a circuit not STATUS_UPDATING");
         return ERROR_GENERIC;
     }
 
-    $self->{STATUS} = STATUS_OFFLINE;
-    $self->{LAST_STATUS_CHANGE} = &mytimeofday();
+    $self->status('Offline');
 
     # Keep track of why the request failed
-    my $failure = [$self->{LAST_STATUS_CHANGE}, $reason];
-    $self->{FAILURES}{CIRCUIT_FAILED_REQUEST} = $failure;
-
+    my $failure = PHEDEX::File::Download::Circuits::Common::Failure->new(time => $self->lastStatusChange, comment => $reason);
+    $self->addFailure($failure);
+    
     $self->Logmsg("$msg: Circuit request failure has been registered");
 
     return OK;
-}
-
-# Returns an array with the [time, reason] of the failed request
-sub getFailedRequest {
-    my $self = shift;
-    return $self->{FAILURES}{CIRCUIT_FAILED_REQUEST};
 }
 
 # Method used to keep track of how many transfers failed
@@ -198,46 +149,26 @@ sub registerTransferFailure {
     # TODO: When registering a failure, it might be nice to also clean up old ones or just "remember the last xxx failures"
     my $msg = 'Circuit->registerTransferFailure';
 
-    if ($self->{STATUS} != STATUS_ONLINE) {
+    if ($self->status ne 'Online') {
         $self->Logmsg("$msg: Cannot register a trasfer failure for a circuit not STATUS_ONLINE");
         return ERROR_GENERIC;
     }
-
-    my $failure = [&mytimeofday(), $task];
-    push(@{$self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS}}, $failure);
-
-    $self->Logmsg("$msg: Circuit transfer failure has been registered") if ($self->{VERBOSE});
+    
+    my $failure = PHEDEX::File::Download::Circuits::Common::Failure->new(time => &mytimeofday(), comment => 'Task failed', faultObject => $task);
+    $self->addFailure($failure);
+    
+    $self->Logmsg("$msg: Circuit transfer failure has been registered") if ($self->verbose);
     return OK;
-}
-
-# Returns an array with all the details regarding the failed transfers
-# that occured on this circuit. Each element in the array is in the form
-# of [time, reason]
-sub getFailedTransfers {
-    my $self = shift;
-    return $self->{FAILURES}{CIRCUIT_FAILED_TRANSFERS};
 }
 
 # Returns what the save path and save time should be based on current status
 sub getSaveParams {
     my $self = shift;
     my ($savePath, $saveTime);
-    
-    switch ($self->{STATUS}) {
-        case STATUS_UPDATING {
-            $savePath = $self->{STATE_DIR}.'/requested';
-            $saveTime = $self->{REQUEST_TIME};
-        }
-        case STATUS_ONLINE {
-            $savePath = $self->{STATE_DIR}.'/online';
-            $saveTime = $self->{ESTABLISHED_TIME};
-        }
-        case STATUS_OFFLINE {
-            $savePath = $self->{STATE_DIR}.'/offline';
-            $saveTime = $self->{LAST_STATUS_CHANGE};
-        }
-    }
-    
+
+    $savePath = $self->stateDir.'/'.$self->status;
+    $saveTime = $self->lastStatusChange;
+
     return ($savePath, $saveTime);
 }
 

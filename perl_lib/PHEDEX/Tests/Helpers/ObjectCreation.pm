@@ -4,11 +4,14 @@ use strict;
 use warnings;
 
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
+
+use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
+
+#use PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
 
 use base 'Exporter';
+
 our @EXPORT = qw(createRequestingCircuit createEstablishedCircuit createOfflineCircuit createTask
                  createOfflineBandwidth createRunningBandwidth createUpdatingBandwidth);
 
@@ -20,10 +23,11 @@ sub createRequestingCircuit {
     $req_time = $req_time || 1398426904;
     $backend = $backend || 'Other::Dummy';
 
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new();
-    $testCircuit->initResource($backend, $from, $to, 0);
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(bookingBackend => $backend,
+                                                                                      nodeA => $from, nodeB => $to);
+
     $testCircuit->registerRequest($life, $req_bandwidth);
-    $testCircuit->{REQUEST_TIME} = $req_time;
+    $testCircuit->requestedTime($req_time);
 
     return $testCircuit;
 }
@@ -38,7 +42,7 @@ sub createEstablishedCircuit {
 
     my $testCircuit = createRequestingCircuit($req_time, $backend, $from, $to, $life, $req_bandwidth);
     $testCircuit->registerEstablished($from_ip, $to_ip, $al_bandwidth);
-    $testCircuit->{ESTABLISHED_TIME} = $est_time;
+    $testCircuit->establishedTime($est_time);
 
     return $testCircuit;
 }
@@ -47,7 +51,7 @@ sub createOfflineCircuit {
     my ($time) = @_;
     my $testCircuit = createEstablishedCircuit();
     $testCircuit->registerTakeDown();
-    $testCircuit->{LAST_STATUS_CHANGE} = $time if $time;
+    $testCircuit->lastStatusChange($time) if $time;
     return $testCircuit;
 }
 
@@ -59,12 +63,12 @@ sub createOfflineBandwidth {
     $to = $to || 'T2_ANSE_AMSTERDAM';
     $backend = $backend || 'Other::Dummy';
 
-    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new();
-    $testBandwidth->initResource($backend, $from, $to);
-    $testBandwidth->{LAST_STATUS_CHANGE} = $lastUpdated;
-    $testBandwidth->{BANDWIDTH_STEP} = $bStep if defined $bStep;
-    $testBandwidth->{BANDWIDTH_MIN} = $bMin if defined $bMin;
-    $testBandwidth->{BANDWIDTH_MAX} = $bMax if defined $bMax;
+    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(bookingBackend => $backend,
+                                                                                          nodeA => $from, nodeB => $to);
+    $testBandwidth->lastStatusChange($lastUpdated);
+    $testBandwidth->bandwidthStep($bStep) if defined $bStep;
+    $testBandwidth->bandwidthMin($bMin) if defined $bMin;
+    $testBandwidth->bandwidthMax($bMax)if defined $bMax;
     
 
     return $testBandwidth;

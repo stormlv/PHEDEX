@@ -7,8 +7,6 @@ use base 'Exporter';
 
 our @EXPORT = qw(
                 BOD CIRCUIT
-                OK
-                ERROR_GENERIC ERROR_SAVING ERROR_OPENING
                 STATUS_OFFLINE STATUS_UPDATING STATUS_ONLINE
                 CIRCUIT_REQUEST_SUCCEEDED
                 CIRCUIT_REQUEST_FAILED CIRCUIT_REQUEST_FAILED_PARAMS CIRCUIT_REQUEST_FAILED_SLOTS CIRCUIT_REQUEST_FAILED_BW CIRCUIT_REQUEST_FAILED_IDC CIRCUIT_REQUEST_FAILED_TIMEDOUT
@@ -16,20 +14,12 @@ our @EXPORT = qw(
                 CIRCUIT_TRANSFERS_FAILED RESOURCE_ALREADY_EXISTS LINK_BLACKLISTED RESOURCE_TYPE_UNSUPPORTED LINK_UNSUPPORTED RESOURCE_REQUEST_POSSIBLE LINK_UNDEFINED
                 TIMER_REQUEST TIMER_BLACKLIST TIMER_TEARDOWN
                 BOD_UPDATE_REDUNDANT
-                MINUTE HOUR DAY
                 );
 
 use constant {
     BOD                 =>  "Bandwidth on demand",
     CIRCUIT             =>  "Circuit",
-    
-    OK                          => 0,
 
-    # Error constants
-    ERROR_GENERIC               => -1,
-    ERROR_SAVING                => -2,
-    ERROR_OPENING               => -3,
-    
     # Status constants
     STATUS_OFFLINE      		=> 1,
     STATUS_UPDATING   			=> 2,
@@ -70,11 +60,7 @@ use constant {
     
     # 
     BOD_UPDATE_REDUNDANT            =>          60,     # An updated of BoD has been requested, but requested bandwidth is already commissioned
-    
-    # Time constants
-    MINUTE  =>      60,
-    HOUR    =>      3600,
-    DAY     =>      24*3600,
+   
 };
 
 1;

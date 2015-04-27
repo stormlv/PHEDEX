@@ -1,103 +1,64 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
-use strict;
-use warnings;
-
+use Moose;
 use base 'PHEDEX::Core::Logging', 'Exporter';
+
 use Data::Dumper;
 use Data::UUID;
 use File::Path;
 use POSIX;
-use Switch;
 use Time::HiRes qw(time);
 
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
-
-our @EXPORT = qw(openState formattedTime getPath);
+use PHEDEX::File::Download::Circuits::Common::Constants;
 
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 1;
 
-=pod
+our @EXPORT = qw(openState formattedTime getPath);
 
-This is the base object which describes the common functionality containted by circuits and bandwidth (BOD) objects
 
-=cut
+# Define enums
+use Moose::Util::TypeConstraints;
+    enum 'ResourceType',    [qw(Circuit Bandwidth)];
+    enum 'ScopeType',       [qw(Generic)];
+    enum 'StatusType',      [qw(Offline Pending Online)];
+no Moose::Util::TypeConstraints;
 
-sub new
-{
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
 
-    my %params = (
-            # Object parameters
-            ID                      => undef,
-            NAME                    => undef,
-            BOOKING_BACKEND         => 'Dummy',
-            
-            RESOURCE_TYPE           => undef,               # Dynamic circuit / Bandwidth on demand
-            
-            NODE_A                  => undef,
-            NODE_B                  => undef,
-            BIDIRECTIONAL           => 1,                   # 0 for unidirectional circuits/links
-                                                            # An unidirectional link doesn't mean it's physically unidirectional
-                                                            # It just means that if multiple nodes share a Manager, only the
-                                                            # site doing transfers from A->B will be allowed to use the resource
-            
-            BANDWIDTH_ALLOCATED     => undef,               # Bandwidth allocated
-            BANDWIDTH_USED          => undef,               # Bandwidth we're actually using
-            
-            SCOPE                   => undef,
-            STATUS                  => undef,
-            LAST_STATUS_CHANGE      => undef,
-            
-            STATE_DIR               => undef,
-            REQUEST_TIMEOUT         => 5*MINUTE,         # in seconds
-            
-            VERBOSE                 => 0,
-    );
+# Required attributes
+has 'bookingBackend'    => (is  => 'ro', isa => 'Str' ,         required => 1);
+has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
+has 'nodeA'             => (is  => 'ro', isa => 'Str',     required => 1);
+has 'nodeB'             => (is  => 'ro', isa => 'Str',     required => 1);
 
-    my %args = (@_);
+# Pre-initialised attributes
+has 'bandwidthAllocated'    => (is  => 'rw', isa => 'Int',          default => 0);
+has 'bandwidthRequested'    => (is  => 'rw', isa => 'Int',          default => 0);
+has 'bandwidthUsed'         => (is  => 'rw', isa => 'Int',          default => 0);
+has 'bidirectional'         => (is  => 'rw', isa => 'Bool',         default => 1);
+has 'id'                    => (is  => 'ro', isa => 'Str',          builder => '_createID');
+has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', traits  => ['Array'], handles => {addFailure => 'push', getFailure => 'get'});
+has 'name'                  => (is  => 'rw', isa => 'Str');
+has 'scope'                 => (is  => 'rw', isa => 'ScopeType',    default => 'Generic');
+has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Offline', trigger => sub {my $self = shift; $self->lastStatusChange(&mytimeofday());});
+has 'stateDir'              => (is  => 'rw', isa => 'Str',          default => '/tmp/managed');
+has 'lastStatusChange'      => (is  => 'rw', isa => 'Num',          default => &mytimeofday());
+has 'verbose'               => (is  => 'rw', isa => 'Bool',         default => 1);
 
-    # use 'defined' instead of testing on value to allow for arguments which are set to zero.
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    $self->{STATE_DIR} = '/tmp/managed' unless defined $self->{STATE_DIR};
-    
-    bless $self, $class;
-
-    return $self;
+# Builder used for the creation of the ID
+sub _createID {
+    my $ug = new Data::UUID;
+    my $id = $ug->to_string($ug->create());
+    return $id;
 }
 
-sub initResource {
-    my ($self, $backend, $type, $nodeA, $nodeB, $bidirectional) = @_;
-    
-    my $msg = "NetworkResource->initResource";
-    
-    if  (! defined $backend || ! defined $type || ! defined $nodeA || ! defined $nodeB) {
-        $self->Logmsg("$msg: Cannot continue initialisation. One of the provided parameters is invalid");
-        return ERROR_GENERIC;
-    }
-    
-    # Initialise ID
-    my $ug = new Data::UUID;
-    $self->{ID} = $ug->to_string($ug->create());
-    
-    # Assign resource data
-    $self->{BOOKING_BACKEND} = $backend;
-    $self->{RESOURCE_TYPE} = $type;
-    $self->{NODE_A} = $nodeA;
-    $self->{NODE_B} = $nodeB;
-    $self->{BIDIRECTIONAL} = $bidirectional ? 1 : 0;
-    $self->{NAME} = getPath($nodeA, $nodeB, $self->{BIDIRECTIONAL});
-    $self->{LAST_STATUS_CHANGE} = &mytimeofday();
-    $self->{SCOPE} = 'GENERIC';
-    $self->Logmsg("$msg: Successfully initialised resource. $type between $nodeA and $nodeB");
-    
-    return OK;
+# Method called directly after the object is constructed
+sub BUILD {
+    my $self = shift;
+    my $name = getPath($self->nodeA, $self->nodeB, $self->bidirectional);
+    $self->name($name);
 }
 
 sub getSaveParams {
@@ -111,10 +72,10 @@ sub getSaveParams {
 # Returns a save path ({STATE_DIR}/[circuits/bod]/$state) and a file path ({STATE_DIR}/[circuits/bod]/$state/$NODE_A-to-$NODE_B-$time)
 sub getSavePaths{
     my $self = shift;
-
+    
     my $msg = "NetworkResource->getSavePaths";
         
-    if (! defined $self->{ID}) {
+    if (! defined $self->id) {
         $self->Logmsg("$msg: Cannot generate a save name for a resource which is not initialised");
         return;
     }
@@ -126,9 +87,9 @@ sub getSavePaths{
         return;
     }
 
-    my $partialID = substr($self->{ID}, 1, 7);
+    my $partialID = substr($self->id, 1, 7);
     my $formattedTime = &formattedTime($saveTime);
-    my $fileName = $self->{NAME}."-$partialID-".$formattedTime;
+    my $fileName = $self->name."-$partialID-".$formattedTime;
     my $filePath = $savePath.'/'.$fileName;
 
     # savePath: {STATE_DIR}/[circuits|bod]/$state
@@ -173,7 +134,7 @@ sub saveState {
     my ($savePath, $fileName, $filePath) = $self->getSavePaths();
     if (! defined $filePath) {
         $self->Logmsg("$msg: An error has occured while generating file name");
-        return ERROR_SAVING;
+        return ERROR_GENERIC;
     }
 
     # Check if state folder existed and create if it didn't
@@ -181,7 +142,7 @@ sub saveState {
         File::Path::make_path($savePath, {error => \my $err});
         if (@$err) {
             $self->Logmsg("$msg: State folder did not exist and we were unable to create it");
-            return ERROR_SAVING;
+            return ERROR_PATH_INVALID;
         }
     }
 
@@ -200,20 +161,22 @@ sub saveState {
 # It will throw an error if the resource provided is corrupt
 # i.e. it doesn't have an ID, STATUS, RESOURCE_TYPE, BOOKING_BACKEND or nodes defined
 sub openState {
-    my ($path) = @_;
+    my $path = shift;
 
-    return (undef, ERROR_OPENING) unless (-e $path);
+    return ERROR_PARAMETER_UNDEF if ! defined $path;
+    return ERROR_FILE_NOT_FOUND if (! -e $path);
 
     my $resource = &evalinfo($path);
 
-    if (! defined $resource->{ID} ||
-        ! defined $resource->{RESOURCE_TYPE} ||
-        ! defined $resource->{STATUS} ||
-        ! defined $resource->{NODE_A} || ! defined $resource->{NODE_B} ||
-        ! defined $resource->{BOOKING_BACKEND} ||
-        ! defined $resource->{STATE_DIR} ||
-        ! defined $resource->{LAST_STATUS_CHANGE}) {
-        return;
+    if (! defined $resource || 
+        ! defined $resource->id ||
+        ! defined $resource->resourceType ||
+        ! defined $resource->status ||
+        ! defined $resource->nodeA || ! defined $resource->nodeB ||
+        ! defined $resource->bookingBackend ||
+        ! defined $resource->stateDir ||
+        ! defined $resource->lastStatusChange) {
+        return ERROR_INVALID_OBJECT;
     }
 
     return $resource;

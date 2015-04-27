@@ -1,50 +1,25 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
 
-use strict;
-use warnings;
+use Moose;
+extends 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource';
 
-use base 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource', 'PHEDEX::Core::Logging', 'Exporter';
 use Data::UUID;
 use POE;
 use POSIX "fmod";
 use Switch;
 
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;;
-use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use base 'PHEDEX::Core::Logging';
+use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::Core::Timing;
 
-sub new {
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
+has '+resourceType'     => (is  => 'ro', default => 'Bandwidth', required => 0);
+has 'bandwidthStep'     => (is  => 'rw', isa => 'Num', default => 1);
+has 'bandwidthMin'      => (is  => 'rw', isa => 'Num', default => 0);
+has 'bandwidthMax'      => (is  => 'rw', isa => 'Num', default => 1000);
 
-    my %params = (
-            # Object params
-            BANDWIDTH_STEP          =>  1,      # Given in Gbps
-            BANDWIDTH_MIN           =>  0,      # Given in multiples of BANDWIDTH_STEP (0 accepted - actually means taking the link down) 
-            BANDWIDTH_MAX           =>  1000,   # Given in multiples of BANDWIDTH_STEP
-            BANDWIDTH_REQUESTED     =>  undef   # Surprise surprise, also given in multiples of BANDWIDTH_STEP
-    );
-
-    my %args = (@_);
-
-    #   use 'defined' instead of testing on value to allow for arguments which are set to zero.
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    bless $self, $class;
-
-    return $self;
-}
-
-sub initResource {
-    my ($self, $backend, $nodeA, $nodeB, $bidirectional) = @_;
-    
-    # Do our own initialisation
-    $self->{STATE_DIR}.="/bod";
-    $self->{STATUS} = STATUS_OFFLINE;
-    $self->{BANDWIDTH_ALLOCATED} = 0;
-    
-    return $self->SUPER::initResource($backend, BOD, $nodeA, $nodeB, $bidirectional);
+sub BUILD {
+    my $self = shift;
+    $self->stateDir($self->stateDir."/".$self->resourceType);
 }
 
 # Returns what the save path and save time should be based on current status
@@ -57,14 +32,14 @@ sub getSaveParams {
     # since in the case of BoD the path should remain up even when updating
     # The object goes into the /offline folder if status if offline, or updating and allocated bw = 0
     # Goes into /online for the rest of the cases
-    if ($self->{STATUS} == STATUS_OFFLINE ||
-        $self->{STATUS} == STATUS_UPDATING && $self->{BANDWIDTH_ALLOCATED} == 0) {
-        $savePath = $self->{STATE_DIR}.'/offline';
+    if ($self->status eq 'Offline' ||
+        $self->status eq 'Pending' && $self->bandwidthAllocated == 0) {
+        $savePath = $self->stateDir.'/offline';
     } else {
-        $savePath = $self->{STATE_DIR}.'/online';
+        $savePath = $self->stateDir.'/online';
     }
     
-    $saveTime = $self->{LAST_STATUS_CHANGE};
+    $saveTime = $self->lastStatusChange;
     
     return ($savePath, $saveTime);
 }
@@ -75,7 +50,7 @@ sub registerUpdateRequest {
 
     my $msg = 'Bandwidth->registerUpdateRequest';
 
-    if ($self->{STATUS} == STATUS_UPDATING) {
+    if ($self->status eq 'Pending') {
         $self->Logmsg("$msg: Cannot request an update. Update already in progress");
         return ERROR_GENERIC;
     }
@@ -83,16 +58,14 @@ sub registerUpdateRequest {
     return ERROR_GENERIC if $self->validateBandwidth($bandwidth) != OK;
     
     # Check if what we're asking is not already here
-    if ($self->{BANDWIDTH_ALLOCATED} > $bandwidth && !$force) {
+    if ($self->bandwidthAllocated > $bandwidth && !$force) {
         $self->Logmsg("$msg: Bandwidth you requested for is already there...");
-        return BOD_UPDATE_REDUNDANT;
+        return ERROR_GENERIC;
     }
     
     # TODO: Differentiate between ajusting bandwidth up or down
-    $self->{STATUS} = STATUS_UPDATING;
-    $self->{BANDWIDTH_REQUESTED} = $bandwidth;
-    $self->{LAST_STATUS_CHANGE} = &mytimeofday();
-
+    $self->status('Pending');
+    $self->bandwidthRequested($bandwidth);
     $self->Logmsg("$msg: state has been switched to STATUS_UPDATING");
 
     return OK;
@@ -104,25 +77,19 @@ sub registerUpdateSuccessful {
 
     my $msg = 'Bandwidth->registerUpdateSuccessful';
 
-    if ($self->{STATUS} != STATUS_UPDATING) {
+    if ($self->status ne 'Pending') {
         $self->Logmsg("$msg: Cannot update status if we're not in updating mode already");
         return ERROR_GENERIC;
     }
     
-    if (! defined $self->{BANDWIDTH_REQUESTED}) {
-        $self->Logmsg("$msg: Something fishy has happened. BANDWIDTH_REQUESTED is not defined...");
-        return ERROR_GENERIC;
-    }
+    $self->bandwidthAllocated($self->bandwidthRequested);
     
-    $self->{BANDWIDTH_ALLOCATED} = $self->{BANDWIDTH_REQUESTED};
-    $self->{BANDWIDTH_REQUESTED} = undef;
-    
-    if ($self->{BANDWIDTH_ALLOCATED} == 0) {
+    if ($self->bandwidthAllocated == 0) {
         $self->Logmsg("$msg: Effectively turning off the resource (by requesting BW of 0)");
-        $self->{STATUS} = STATUS_OFFLINE;
+        $self->status('Offline');
     } else {
         $self->Logmsg("$msg: Bandwidth capacity updated");
-        $self->{STATUS} = STATUS_ONLINE;
+        $self->status('Online');
     }
     
     return OK;
@@ -133,17 +100,16 @@ sub registerUpdateSuccessful {
 # TODO: Do we need to remember this failure? If we do, also add support for storing reason  
 sub registerUpdateFailed {
     my $self = shift;
-    
+
     my $msg = 'Bandwidth->registerUpdateFailed';
-    
-    if ($self->{STATUS} != STATUS_UPDATING) {
+
+    if ($self->status ne 'Pending') {
         $self->Logmsg("$msg: Cannot update status if we're not in updating mode already");
         return ERROR_GENERIC;
     }
-    
-    $self->{BANDWIDTH_REQUESTED} = undef;
-    $self->{STATUS} = $self->{BANDWIDTH_ALLOCATED} == 0 ? STATUS_OFFLINE : STATUS_ONLINE;
-    
+
+    $self->bandwidthAllocated == 0 ? $self->status('Offline') : $self->status('Online');
+
     return OK;
 }
 
@@ -154,8 +120,8 @@ sub validateBandwidth {
 
     # Check that the bandwidth was correctly specified
     if (! defined $bandwidth || 
-        $bandwidth < $self->{BANDWIDTH_MIN} || $bandwidth > $self->{BANDWIDTH_MAX} ||
-        fmod($bandwidth, $self->{BANDWIDTH_STEP}) != 0) {
+        $bandwidth < $self->bandwidthMin || $bandwidth > $self->bandwidthMax ||
+        fmod($bandwidth, $self->bandwidthStep) != 0) {
         $self->Logmsg("$msg: Invalid bandwidth request");
         return ERROR_GENERIC;
     } else {
