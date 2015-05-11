@@ -9,6 +9,8 @@ use Test::More;
 use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
+use PHEDEX::File::Download::Circuits::ManagedResource::Node;
+use PHEDEX::File::Download::Circuits::ManagedResource::Path;
 use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
 
 # Test the "getPath" function - used to return the link name 
@@ -32,17 +34,19 @@ sub testHelperMethods {
 sub testInitialisation {
     my $msg = "TestNetworkResource->testInitialisation";
     
-    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(bookingBackend => 'Dummy',
-                                                                                                resourceType    => 'Circuit',
-                                                                                                nodeA => 'NodeA', nodeB => 'NodeB');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+
+    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy',
+                                                                                           resourceType    => 'Circuit',
+                                                                                           path => $path);
     
     # Provide all the correct parameters to the initialisation and test to see if they were all set in the object
-    is($resource->bookingBackend, "Dummy", "$msg: Initialisation ok (backend matches)");
+    is($resource->backendType, "Dummy", "$msg: Initialisation ok (backend matches)");
     is($resource->resourceType, "Circuit", "$msg: Initialisation ok (type matches)");
-    is($resource->nodeA, "NodeA", "$msg: Initialisation ok (NodeA matches)");
-    is($resource->nodeB, "NodeB", "$msg: Initialisation ok (NodeB matches)");
-    is($resource->bidirectional, 1, "$msg: Initialisation ok (Bidirectional matches)");
-    is($resource->name, "NodeA-NodeB", "$msg: Initialisation ok (path name matches)");
+    is($resource->path->getSiteNameA, "NodeA", "$msg: Initialisation ok (NodeB matches)");
+    is($resource->path->getSiteNameB, "NodeB", "$msg: Initialisation ok (NodeB matches)");
     is($resource->scope, "Generic", "$msg: Initialisation ok (scope matches)");
     ok($resource->lastStatusChange, "$msg: Initialisation ok (remembered last status change)");
 }

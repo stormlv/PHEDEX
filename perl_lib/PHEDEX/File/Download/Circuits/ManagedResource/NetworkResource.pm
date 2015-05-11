@@ -11,35 +11,37 @@ use Time::HiRes qw(time);
 
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
+use PHEDEX::File::Download::Circuits::ManagedResource::Path;
 use PHEDEX::File::Download::Circuits::Common::Constants;
+use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
 
 $Data::Dumper::Terse = 1;
 $Data::Dumper::Indent = 1;
 
-our @EXPORT = qw(openState formattedTime getPath);
+our @EXPORT = qw(openState);
 
 
 # Define enums
 use Moose::Util::TypeConstraints;
-    enum 'ResourceType',    [qw(Circuit Bandwidth)];
-    enum 'ScopeType',       [qw(Generic)];
-    enum 'StatusType',      [qw(Offline Pending Online)];
+    enum 'ResourceType',    RESOURCE_TYPES;
+    enum 'ScopeType',       SCOPE_TYPES;
+    enum 'StatusType',      STATUS_TYPES;
 no Moose::Util::TypeConstraints;
 
-
+# TODO Add the ID of the physical circuit to which this network resource is mapped to
+ 
 # Required attributes
-has 'bookingBackend'    => (is  => 'ro', isa => 'Str' ,         required => 1);
+has 'backendType'       => (is  => 'ro', isa => 'Str' ,         required => 1);
 has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
-has 'nodeA'             => (is  => 'ro', isa => 'Str',     required => 1);
-has 'nodeB'             => (is  => 'ro', isa => 'Str',     required => 1);
+has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Path', required => 1);
 
 # Pre-initialised attributes
 has 'bandwidthAllocated'    => (is  => 'rw', isa => 'Int',          default => 0);
 has 'bandwidthRequested'    => (is  => 'rw', isa => 'Int',          default => 0);
 has 'bandwidthUsed'         => (is  => 'rw', isa => 'Int',          default => 0);
-has 'bidirectional'         => (is  => 'rw', isa => 'Bool',         default => 1);
 has 'id'                    => (is  => 'ro', isa => 'Str',          builder => '_createID');
-has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', traits  => ['Array'], handles => {addFailure => 'push', getFailure => 'get'});
+has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', traits  => ['Array'], handles => {addFailure => 'push', getFailure => 'get', getAllFailures => 'elements'});
 has 'name'                  => (is  => 'rw', isa => 'Str');
 has 'scope'                 => (is  => 'rw', isa => 'ScopeType',    default => 'Generic');
 has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Offline', trigger => sub {my $self = shift; $self->lastStatusChange(&mytimeofday());});
@@ -54,11 +56,9 @@ sub _createID {
     return $id;
 }
 
-# Method called directly after the object is constructed
-sub BUILD {
+sub getLinkName {
     my $self = shift;
-    my $name = getPath($self->nodeA, $self->nodeB, $self->bidirectional);
-    $self->name($name);
+    return $self->path->getName;
 }
 
 sub getSaveParams {
@@ -88,8 +88,9 @@ sub getSavePaths{
     }
 
     my $partialID = substr($self->id, 1, 7);
-    my $formattedTime = &formattedTime($saveTime);
-    my $fileName = $self->name."-$partialID-".$formattedTime;
+    my $formattedTime = &getFormattedTime($saveTime);
+    my $link = $self->getLinkName();
+    my $fileName = $link."-$partialID-".$formattedTime;
     my $filePath = $savePath.'/'.$fileName;
 
     # savePath: {STATE_DIR}/[circuits|bod]/$state
@@ -172,8 +173,8 @@ sub openState {
         ! defined $resource->id ||
         ! defined $resource->resourceType ||
         ! defined $resource->status ||
-        ! defined $resource->nodeA || ! defined $resource->nodeB ||
-        ! defined $resource->bookingBackend ||
+        ! defined $resource->path->nodeA || ! defined $resource->path->nodeB ||
+        ! defined $resource->backendType ||
         ! defined $resource->stateDir ||
         ! defined $resource->lastStatusChange) {
         return ERROR_INVALID_OBJECT;
@@ -199,31 +200,6 @@ sub removeState {
 
 sub TO_JSON {
     return { %{ shift() } };
-}
-
-# Helper methods #
-
-# Returns the link name in the form of Node1-to-Node2 or Node1-Node2 from two given nodes
-sub getPath {
-    my ($nodeA, $nodeB, $bidirectional) = @_;
-    my $link = $bidirectional? "-":"-to-";
-    return defined $nodeA && defined $nodeB ? $nodeA.$link.$nodeB : undef;
-}
-
-# Generates a human readable date and time - mostly used when saving, in the state file name
-sub formattedTime{
-    my ($time, $includeMilis) = @_;
-
-    return if ! defined $time;
-
-    my $milis = '';
-
-    if ($includeMilis) {
-        $milis = sprintf("%.4f", $time - int($time));
-        $milis  =~ s/^.//;
-    }
-
-    return strftime('%Y%m%d-%Hh%Mm%S', gmtime(int($time))).$milis;
 }
 
 1;

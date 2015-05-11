@@ -22,9 +22,13 @@ sub createRequestingCircuit {
     $to = $to || 'T2_ANSE_AMSTERDAM';
     $req_time = $req_time || 1398426904;
     $backend = $backend || 'Other::Dummy';
-
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(bookingBackend => $backend,
-                                                                                      nodeA => $from, nodeB => $to);
+    
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $from, endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $to, endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => $backend,
+                                                                                      path => $path);
 
     $testCircuit->registerRequest($life, $req_bandwidth);
     $testCircuit->requestedTime($req_time);
@@ -63,8 +67,12 @@ sub createOfflineBandwidth {
     $to = $to || 'T2_ANSE_AMSTERDAM';
     $backend = $backend || 'Other::Dummy';
 
-    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(bookingBackend => $backend,
-                                                                                          nodeA => $from, nodeB => $to);
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $from, endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $to, endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    
+    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(backendType => $backend,
+                                                                                          path => $path);
     $testBandwidth->lastStatusChange($lastUpdated);
     $testBandwidth->bandwidthStep($bStep) if defined $bStep;
     $testBandwidth->bandwidthMin($bMin) if defined $bMin;

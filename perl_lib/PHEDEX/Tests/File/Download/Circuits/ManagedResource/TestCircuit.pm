@@ -10,6 +10,7 @@ use Test::More;
 use PHEDEX::Core::Timing;
 
 use PHEDEX::File::Download::Circuits::Common::Constants;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
 use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
@@ -19,14 +20,19 @@ use PHEDEX::Tests::Helpers::ObjectCreation;
 sub testInitialisation {
     my $msg = "TestCircuit->testInitialisation";
     
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    
+    
     # Create circuit and initialise it
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(bookingBackend => 'Dummy',
-                                                                                      nodeA => 'NodeA', nodeB => 'NodeB');
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy',
+                                                                                      path => $path);
     
     ok($testCircuit->id, "$msg: ID set");
-    is($testCircuit->nodeA, 'NodeA', "$msg: Object initialisation - Node_A set");
-    is($testCircuit->nodeB, 'NodeB', "$msg: Object initialisation - Node_B set");
-    is($testCircuit->bookingBackend, 'Dummy', "$msg: Object initialisation - Backend set");
+    is($testCircuit->path->getSiteNameA, 'NodeA', "$msg: Object initialisation - Node_A set");
+    is($testCircuit->path->getSiteNameB, 'NodeB', "$msg: Object initialisation - Node_B set");
+    is($testCircuit->backendType, 'Dummy', "$msg: Object initialisation - Backend set");
     is($testCircuit->status, 'Offline', "$msg: Object initialisation - Status set to offline");
     is($testCircuit->stateDir, '/tmp/managed/Circuit', "$msg: Object initialisation - Correct state folder set");
     is($testCircuit->scope, 'Generic', "$msg: Object initialisation - Scope set");
@@ -58,7 +64,7 @@ sub testHelperMethods {
     is($testCircuit4->isExpired(), 1, "$msg: Established circuit expired");
     is($testCircuit5->isExpired(), 0, "$msg: Established circuit still valid");
 
-    is($testCircuit1->name, 'T2_ANSE_CERN_1-T2_ANSE_CERN_2', "$msg: Name was set correctly");
+    is($testCircuit1->getLinkName(), 'T2_ANSE_CERN_1-T2_ANSE_CERN_2', "$msg: Name was set correctly");
 
     # Test getSavePaths
     ok($testCircuit1->getSavePaths() =~ /Pending/, "$msg: getSavePaths works as it should on a requested circuit");
@@ -75,8 +81,12 @@ sub testSaveErrorHandling {
     # Clean tmp dir before everything else
     File::Path::rmtree('/tmp/managed/Circuit', 1, 1) if (-d '/tmp/managed/Circuit');
     
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(bookingBackend => 'Dummy',
-                                                                                      nodeA => 'NodeA', nodeB => 'NodeB');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy',
+                                                                                      path => $path);
     
     $testCircuit->stateDir('');
     is($testCircuit->saveState(), ERROR_PATH_INVALID, "$msg: Unable to save circuit since we cannot create state folder");
@@ -121,7 +131,7 @@ sub testSaveOpenObject{
     my $testCircuit3 = createEstablishedCircuit();
     $testCircuit3->registerTakeDown();
 
-    my $time = formattedTime($testCircuit3->lastStatusChange);
+    my $time = &getFormattedTime($testCircuit3->lastStatusChange);
     is($testCircuit3->saveState(), OK, "$msg: Successfully saved circuit in offline state");
 
     ok(-e $testCircuit3->getSavePaths(), "$msg: Tested that save file exists");
@@ -171,8 +181,12 @@ sub testRemoveStateFiles {
 sub testStatusChange{
     my $msg = "TestCircuit->testStatusChange";
     
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(bookingBackend => 'Dummy',
-                                                                                  nodeA => 'T2_ANSE_GENEVA', nodeB => 'T2_ANSE_AMSTERDAM');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'T2_ANSE_GENEVA', endpointName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'T2_ANSE_AMSTERDAM', endpointName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy',
+                                                                                      path => $path);
 
     is($testCircuit->registerRequest(), OK, "$msg: Changed state to requested");
     is($testCircuit->status, 'Pending', "$msg: Changed state verified");
@@ -190,7 +204,7 @@ sub testStatusChange{
 
     # Test methods on a circuit which is "in request"
     my $testCircuit3 = createRequestingCircuit();
-    is($testCircuit3->registerRequestFailure('my reason'), OK, "$msg: Changed state to request failed");
+    ok($testCircuit3->registerRequestFailure('my reason'), "$msg: Changed state to request failed");
     is($testCircuit3->status, 'Offline', "$msg: Changed state verified - STATUS set");
 }
 
@@ -200,7 +214,7 @@ sub testErrorLogging {
     
     #Request error
     my $testCircuit1 = createRequestingCircuit();
-    is($testCircuit1->registerRequestFailure('my reason'), OK, "$msg: Changed state to request failed");
+    ok($testCircuit1->registerRequestFailure('my reason'), "$msg: Changed state to request failed");
     my $failure1 = $testCircuit1->getFailure(0);
     is($failure1->time, $testCircuit1->lastStatusChange, "$msg: Failed request successfully logged");
     is($failure1->comment, 'my reason', "$msg: Failed request successfully logged");
@@ -213,8 +227,8 @@ sub testErrorLogging {
     my $task2 = createTask($startTime, 1024**3, 30, 30);
 
     is($testCircuit2->registerEstablished('192.168.0.1','192.168.0.2', 1000), OK, "$msg: Changed state to established");
-    is($testCircuit2->registerTransferFailure($task1, 'failure 1'), OK, "$msg: Task failure registered");
-    is($testCircuit2->registerTransferFailure($task2, 'failure 2'), OK, "$msg: Task failure registered");
+    ok($testCircuit2->registerTransferFailure($task1, 'failure 1'), "$msg: Task failure registered");
+    ok($testCircuit2->registerTransferFailure($task2, 'failure 2'), "$msg: Task failure registered");
 
     my $failure2 = $testCircuit2->getFailure(0);
     my $failure3 = $testCircuit2->getFailure(1);
