@@ -126,7 +126,7 @@ sub registerRequestFailure {
 
     if ($self->status ne 'Pending') {
         $self->Logmsg("$msg: Cannot register a request failure for a circuit not STATUS_UPDATING");
-        return ERROR_GENERIC;
+        return undef;
     }
 
     $self->status('Offline');
@@ -137,7 +137,7 @@ sub registerRequestFailure {
     
     $self->Logmsg("$msg: Circuit request failure has been registered");
 
-    return OK;
+    return $failure;
 }
 
 # Method used to keep track of how many transfers failed
@@ -151,14 +151,23 @@ sub registerTransferFailure {
 
     if ($self->status ne 'Online') {
         $self->Logmsg("$msg: Cannot register a trasfer failure for a circuit not STATUS_ONLINE");
-        return ERROR_GENERIC;
+        return undef;
     }
     
     my $failure = PHEDEX::File::Download::Circuits::Common::Failure->new(time => &mytimeofday(), comment => 'Task failed', faultObject => $task);
     $self->addFailure($failure);
     
     $self->Logmsg("$msg: Circuit transfer failure has been registered") if ($self->verbose);
-    return OK;
+    return $failure;
+}
+
+sub getTransferFailureCount {
+    my $self = shift;
+    my $failureCount = 0;
+    foreach my $failure ($self->getAllFailures()) {
+        $failureCount ++ if ($failure->comment eq 'Task failed');
+    }
+    return 0;
 }
 
 # Returns what the save path and save time should be based on current status

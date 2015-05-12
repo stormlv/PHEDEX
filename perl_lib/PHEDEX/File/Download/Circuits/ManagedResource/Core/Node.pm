@@ -1,4 +1,4 @@
-package PHEDEX::File::Download::Circuits::ManagedResource::Node;
+package PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
 
 use Moose;
 

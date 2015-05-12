@@ -11,7 +11,7 @@ use Time::HiRes qw(time);
 
 use PHEDEX::Core::Command;
 use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::ManagedResource::Path;
+use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
 use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
@@ -34,7 +34,7 @@ no Moose::Util::TypeConstraints;
 # Required attributes
 has 'backendType'       => (is  => 'ro', isa => 'Str' ,         required => 1);
 has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
-has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Path', required => 1);
+has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Path', required => 1);
 
 # Pre-initialised attributes
 has 'bandwidthAllocated'    => (is  => 'rw', isa => 'Int',          default => 0);
