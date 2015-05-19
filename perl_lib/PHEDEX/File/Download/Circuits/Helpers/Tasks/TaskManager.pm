@@ -1,32 +1,31 @@
-package PHEDEX::File::Download::Circuits::Helpers::External;
+package PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager;
 
-use strict;
-use warnings;
+use Moose;
 
 use base 'PHEDEX::Core::Logging';
+use base 'Exporter';
+our @EXPORT = qw(EXTERNAL_PID EXTERNAL_EVENTNAME EXTERNAL_OUTPUT EXTERNAL_TASK);
 
 use POE;
 use POE::Component::Child;
 
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
+use PHEDEX::File::Download::Circuits::Helpers::Tasks::Task;
 
-sub new {
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
+use constant {
+    EXTERNAL_PID                    =>          0,
+    EXTERNAL_EVENTNAME              =>          1,
+    EXTERNAL_OUTPUT                 =>          2,
+    EXTERNAL_TASK                   =>          3,
+};
 
-    my %params = (
-        RUNNING_TASKS       =>      undef,
-        VERBOSE             =>      0,
-    );
-
-    my %args = (@_);
-
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    bless $self, $class;
-    return $self;
-}
+has 'runningTasks'  => (is  => 'ro', isa => 'HashRef',
+                        traits  => ['Hash'], 
+                        handles => {addTask     => 'set',
+                                    getTask     => 'get',
+                                    hasTask     => 'exists',
+                                    removeTask  => 'delete', 
+                                    clearTasks  => 'clear'});
+has 'verbose'       => (is  => 'rw', isa => 'Bool');
 
 # Launches an external command
 # If an action is specified (callback/postback), it will be called for each event (STDOUT, STDERR, SIGCHLD)
@@ -38,7 +37,7 @@ sub startCommand {
 
     my $pid;
 
-    my $msg = "External->startCommand";
+    my $msg = "TaskManager->startCommand";
     # TODO: Extra checks potentially needed on the type of command that needs to run
     if (!defined $command) {
         $self->Logmsg('$msg: Cannot start external tool without correct parameters');
@@ -78,19 +77,17 @@ sub startCommand {
                 $heap->{tasks_by_pid}{$pid} = $task;
 
                 # We also need to remember the currently running tasks and the actions that need to be taken for each
-                my $taskWrapper = {
-                    TASK        =>  $task,
-                    ACTION      =>  $action,
-                };
+                
+                my $taskWrapper = PHEDEX::File::Download::Circuits::Helpers::Tasks::Task->new(task => $task, action => $action);
 
                 # If a timeout is defined, set an delay and remember the ALARM_ID
                 if (defined $timeout) {
                     $self->Logmsg("$msg: Setting timeout for task");
-                    $taskWrapper->{ALARM_ID} = $kernel->delay_set('handleTaskTimeout', $timeout, $heap, $pid);
-                    $taskWrapper->{ALARM_TIMEOUT} = $timeout;
+                    $taskWrapper->alarmId($kernel->delay_set('handleTaskTimeout', $timeout, $heap, $pid));
+                    $taskWrapper->alarmTimeout($timeout);
                 }
 
-                $self->{RUNNING_TASKS}{$pid} = $taskWrapper;
+                $self->addTask($pid, $taskWrapper);
             }
         },
         object_states => [
@@ -107,16 +104,6 @@ sub startCommand {
     return $pid;
 }
 
-sub getTaskByPID {
-    my ($self, $pid) = @_;
-    
-    if (! defined $self->{RUNNING_TASKS}->{$pid}) {
-        $self->Logmsg("Cannot find the requested PID");
-        return;
-    }
-    
-    return $self->{RUNNING_TASKS}->{$pid}->{TASK};
-}
 # Wheel event for both the StdOut and StdErr output
 # The action specified for this task will be called with
 # with the following parameters (PID, event name, output)
@@ -124,11 +111,11 @@ sub getTaskByPID {
 sub handleTaskStdOut {
     my ($self, $sendingEvent, $heap, $output, $wheelId) = @_[OBJECT, STATE, HEAP, ARG0, ARG1];
 
-    my $msg = "External->handleTaskStdOut";
+    my $msg = "TaskManager->handleTaskStdOut";
 
     my $task = $heap->{tasks_by_id}{$wheelId};
     my $pid = $task->PID;
-    my $action =  $self->{RUNNING_TASKS}{$task->PID}{ACTION};
+    my $action = $self->getTask($task->PID)->action;
 
     # Tick, so we know that the task is still alive
     $self->timerTick($pid);
@@ -151,7 +138,7 @@ sub handleTaskStdOut {
 sub handleTaskClose {
     my ($self, $sendingEvent, $heap, $wheelId) = @_[OBJECT, STATE, HEAP, ARG0];
 
-    my $msg = "External->handleTaskClose";
+    my $msg = "TaskManager->handleTaskClose";
 
     $self->Logmsg("$msg: Task closed its last output handle");
 }
@@ -165,7 +152,7 @@ sub handleTaskSignal {
     my $msg = "External->handleTaskSignal";
 
     my $task = $heap->{tasks_by_pid}{$pid};
-    my $action = $self->{RUNNING_TASKS}{$task->PID}{ACTION};
+    my $action = $self->getTask($task->PID)->action;
 
     $self->cleanupTask($heap, $task);
 
@@ -185,7 +172,7 @@ sub handleTaskTimeout {
     my ($self, $kernel, $session, $sendingEvent, $heap, $pid) = @_[OBJECT, KERNEL, SESSION, STATE, ARG0, ARG1];
 
     my @results = @_;
-    my $msg = "External->handleTaskTimeout";
+    my $msg = "TaskManager->handleTaskTimeout";
     $self->Logmsg("$msg: Didn't receive any output from task in a long time. Killing task");
 
     $self->kill_task($pid);
@@ -194,9 +181,9 @@ sub handleTaskTimeout {
 # Re-adjusts the alarm since the task  is still alive
 sub timerTick {
     my ($self, $pid) = @_;
-    my $taskWrapper = $self->{RUNNING_TASKS}{$pid};
-    if (defined $taskWrapper->{ALARM_ID}) {
-        POE::Kernel->alarm_adjust($taskWrapper->{ALARM_ID}, $taskWrapper->{ALARM_TIMEOUT});
+    my $taskWrapper = $self->getTask($pid);
+    if (defined $taskWrapper->alarmId) {
+        POE::Kernel->alarm_adjust($taskWrapper->alarmId, $taskWrapper->alarmTimeout);
     }
 }
 
@@ -206,7 +193,7 @@ sub timerTick {
 sub cleanupTask {
     my ($self, $heap, $task) = @_;
 
-    my $msg = "External->cleanupTask";
+    my $msg = "TaskManager->cleanupTask";
 
     if (!defined $heap || !defined $task) {
         $self->Logmsg("$msg: Cannot clean up with invalid parameters");
@@ -219,13 +206,13 @@ sub cleanupTask {
     delete $heap->{tasks_by_id}{$task->ID};
     delete $heap->{tasks_by_pid}{$pid};
 
-    my $taskWrapper = $self->{RUNNING_TASKS}{$pid};
-    if (defined $taskWrapper->{ALARM_ID}) {
+    my $taskWrapper = $self->getTask($pid);
+    if (defined $taskWrapper->alarmId) {
         $self->Logmsg("$msg: Removing timer for PID ($pid)");
-        POE::Kernel->alarm_remove($taskWrapper->{ALARM_ID}) ;
+        POE::Kernel->alarm_remove($taskWrapper->alarmId) ;
     }
 
-    delete $self->{RUNNING_TASKS}{$pid};
+    $self->removeTask($pid);
 }
 
 # Sends a SIGINT signal to the task
@@ -233,15 +220,15 @@ sub cleanupTask {
 sub kill_task {
     my ($self, $pid) = @_;
 
-    my $msg = "External->kill_task";
+    my $msg = "TaskManager->kill_task";
 
-    if (!defined $self->{RUNNING_TASKS}{$pid}) {
+    if (! defined $self->hasTask($pid)) {
         $self->Logmsg("$msg: Cannot find any process with the specified PID $pid");
         return;
     }
 
     $self->Logmsg("$msg: Killing PID $pid (SIGINT)");
-    $self->{RUNNING_TASKS}{$pid}{TASK}->kill("INT");
+    $self->getTask($pid)->task->kill("INT");
 }
 
 1;
