@@ -9,6 +9,9 @@ use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
 use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpConstants;
 use Test::More;
 
+use Sys::Hostname;
+use Socket;
+
 # Create master session
 POE::Session->create(
         inline_states => {
@@ -38,33 +41,65 @@ POE::Session->create(
 sub runGetMethodTests {
     my ($kernel, $session, $userAgent) = @_[KERNEL, SESSION, ARG0];
 
-    # Test error handling
-    $userAgent->httpRequest("GET", "http://this.site.does.not.exist.com/", undef, $session->postback("validateHttpRequest", undef, 500));# Site doesn't exist
-    $userAgent->httpRequest("GET", "http://www.google.com/", undef, $session->postback("validateHttpRequest", undef, 302));              # Site replies with "Found" (considered as error)
-    $userAgent->httpRequest("GET", "http://www.youtube.com/", undef, $session->postback("validateHttpRequest", undef, 415));             # Site replies with something, but it's not JSON
+    ### Test error handling ##
+    # Site doesn't exist
+    my $request1 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://this.site.does.not.exist.com/",
+                                                                                    callback => $session->postback("validateHttpRequest", undef, 500));
+    $userAgent->httpRequest($request1);
 
-    # Test with sources providing valid json objects
-    $userAgent->httpRequest("GET", "http://ip.jsontest.com/", undef, $session->postback("validateHttpRequest"));
-    $userAgent->httpRequest("GET", "http://date.jsontest.com/", undef, $session->postback("validateHttpRequest"));
+
+    # Site replies with "Found" (usually used to do a URL redirection)
+    my $request2 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://www.google.com/",
+                                                                                    callback => $session->postback("validateHttpRequest", undef, 302));
+    $userAgent->httpRequest($request2);
+    
+    # Site replies with something, but it's not JSON
+    my $request3 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://phys.org/",
+                                                                                    callback => $session->postback("validateHttpRequest", undef, 415));
+    $userAgent->httpRequest($request3);
+
+    ### Test with sources providing valid json objects ##
+    my ($addr) = inet_ntoa((gethostbyname(hostname))[4]);
+    my $request4 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://httpbin.org/ip",
+                                                                                    callback => $session->postback("validateHttpRequest", { origin => $addr }, 200));
+    $userAgent->httpRequest($request4);
 
     # Test one of the objects that we get back from the server
     my $headers = {
-        'Host'          => 'headers.jsontest.com',
-        'User-Agent'    => 'POE-Component-Client-HTTP/0.949 (perl; N; POE; en; rv:0.949000)'
+        headers => {
+            'Host'          => 'httpbin.org',
+            'User-Agent'    => 'POE-Component-Client-HTTP/0.949 (perl; N; POE; en; rv:0.949000)'
+        }
     };
-    $userAgent->httpRequest("GET", "http://headers.jsontest.com/", undef, $session->postback("validateHttpRequest", $headers, 200));
+    
+    my $request5 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://httpbin.org/headers",
+                                                                                    callback => $session->postback("validateHttpRequest", $headers, 200));
+    $userAgent->httpRequest($request5);
 
     # Test get method with url encoded data provided
     my $input = { text  => "This text was passed as form data" };
     my $echo = {
-        md5         => 'f17f1627580f66f8af8d712d52318bb6',
-        original    => "This text was passed as form data"
+        "args" => {
+            text => "This text was passed as form data"
+        },
+        "headers" => {
+            "Host"              => "httpbin.org",
+            "User-Agent"        => "POE-Component-Client-HTTP/0.949 (perl; N; POE; en; rv:0.949000)"
+        },
+        "origin"    => "137.138.42.16",
+        "url"       => "http://httpbin.org/get?text=This+text+was+passed+as+form+data"
     };
 
-    $userAgent->httpRequest("GET", "http://md5.jsontest.com/", $input, $session->postback("validateHttpRequest", $echo, 200));
-
-    # Test with another site
-    $userAgent->httpRequest("GET", "http://httpbin.org/get", undef, $session->postback("validateHttpRequest", undef, 200));
+    my $request6 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://httpbin.org/get",
+                                                                                    arguments => $input,
+                                                                                    callback => $session->postback("validateHttpRequest", $echo, 200));
+    $userAgent->httpRequest($request6);
 }
 
 sub runPostMethodTests {
@@ -78,15 +113,45 @@ sub runPostMethodTests {
         secretAnswer    => 42
     };
 
-    # Test error handling
-    $userAgent->httpRequest("POST", "http://this.site.does.not.exist.com/", ["FORM", $testData], $session->postback("validateHttpRequest", undef, 500));# Site doesn't exist
-    $userAgent->httpRequest("POST", "http://httpbin.org/get", ["FORM", $testData], $session->postback("validateHttpRequest", undef, 405));              # Method not allowed
+    ### Test error handling ###
+    # Site doesn't exist
+    my $request1 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://this.site.does.not.exist.com/",
+                                                                                    arguments => ["FORM", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", undef, 500));
+    $userAgent->httpRequest($request1);
+    
+    # Method not allowed
+    my $request2 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://httpbin.org/get",
+                                                                                    arguments => ["FORM", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", undef, 405));
+    $userAgent->httpRequest($request2);
 
     # Test posting of data
-    $userAgent->httpRequest("POST", "http://httpbin.org/post", ["FORM", $testData], $session->postback("validateHttpRequest", $testData, 200, "form"));
-    $userAgent->httpRequest("POST", "http://httpbin.org/post", ["JSON", $testData], $session->postback("validateHttpRequest", $testData, 200, "json"));
-    $userAgent->httpRequest("POST", "http://httpbin.org/post", ["TEXT", $testData], $session->postback("validateHttpRequest", undef, 200));
-    $userAgent->httpRequest("POST", "http://httpbin.org/post", ["BLA", $testData], $session->postback("validateHttpRequest", undef, HTTP_CLIENT_INVALID_REQUEST));
+    my $request3 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://httpbin.org/post",
+                                                                                    arguments => ["FORM", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", $testData, 200, "form"));
+    $userAgent->httpRequest($request3);
+    
+    my $request4 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://httpbin.org/post",
+                                                                                    arguments => ["JSON", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", $testData, 200, "json"));
+    $userAgent->httpRequest($request4);
+    
+    my $request5 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://httpbin.org/post",
+                                                                                    arguments => ["TEXT", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", undef, 200));
+    $userAgent->httpRequest($request5);
+    
+    my $request6 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://httpbin.org/post",
+                                                                                    arguments => ["BLA", $testData],
+                                                                                    callback =>$session->postback("validateHttpRequest", undef, HTTP_CLIENT_INVALID_REQUEST));
+    $userAgent->httpRequest($request6);
 }
 
 sub validateHttpRequest {

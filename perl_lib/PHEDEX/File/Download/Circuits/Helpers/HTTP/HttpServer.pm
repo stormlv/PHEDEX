@@ -1,7 +1,6 @@
 package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 
-use strict;
-use warnings;
+use Moose;
 
 use base 'PHEDEX::Core::Logging';
 
@@ -12,28 +11,28 @@ use JSON::XS;
 use POE qw(Component::Server::TCP Filter::HTTPD);
 use Switch;
 
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler;
 use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpConstants;
 
-sub new {
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
+# TODO: Subtype redefinition ! Check to see how to export subtypes, enums, etc
+use Moose::Util::TypeConstraints;
+    subtype 'IP', as 'Str', where {&determineAddressType($_) ne ADDRESS_INVALID}, message { "The value you provided is not a valid hostname or IP(v4/v6)"};
+    subtype 'Port', as 'Int', where {&checkPort($_) ne PORT_INVALID}, message { "The value you provided is not a valid port"};
+no Moose::Util::TypeConstraints;
 
-    my %params = (
-        ALIAS               => "phedex_json_server",
-        HOSTNAME            => 'vlad-vm-slc6.cern.ch',
-        PORT                => 8080,
-        SERVER_SESSION_ID   => undef,
-        ACTIONS             => {}
-    );
-
-    my %args = (@_);
-
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    bless $self, $class;
-    return $self;
-}
+has 'alias'         => (is  => 'rw', isa => 'Str',      default => 'rmHttpServer');
+has 'hostname'      => (is  => 'rw', isa => 'IP',       default => 'vlad-vm-slc6.cern.ch');
+has 'port'          => (is  => 'rw', isa => 'Port',     default => 8080);
+has 'replyTimeout'  => (is  => 'rw', isa => 'Int',      default => 10);
+has 'sessionId'     => (is  => 'rw', isa => 'Int');
+has 'handlers'      => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler]',
+                        traits  => ['Hash'], 
+                        handles => {addHandler      => 'set',
+                                    getHandler      => 'get',
+                                    hasHandler      => 'exists',
+                                    clearHandlers   => 'clear'});
 
 # Starts a WEB server (using POE::Component::Server::TCP)
 sub startServer {
@@ -41,24 +40,25 @@ sub startServer {
 
     # This server should behave as a singleton, so lets check that one
     # is not already started before we continue here
-    if (defined $self->{SERVER_SESSION_ID}) {
+    if (defined $self->sessionId) {
         $self->Logmsg("Cannot start a new HTTP server. Please stop the current server before you attempt to start another one");
         return HTTP_SERVER_ALREADY_STARTED;
     }
 
     # Replace any default parameters if they have been specified
-    $self->{HOSTNAME} = $hostname if defined $hostname;
-    $self->{PORT} = $port if defined $port;
-    $self->{REPLY_TIMEOUT} = $timeout if defined $timeout;
+    $self->hostname($hostname) if defined $hostname;
+    $self->port($port) if defined $port;
+    $self->replyTimeout($timeout) if defined $timeout;
 
-    $self->Logmsg("Starting HTTP server: $self->{HOSTNAME}:$self->{PORT}");
+    $self->Logmsg("Starting HTTP server @ ".$self->hostname.":".$self->port);
 
-    $self->{SERVER_SESSION_ID} =
+    my $sessionId = 
         POE::Component::Server::TCP->new(
-            Alias           => $self->{ALIAS},
-            Hostname        => $self->{HOSTNAME},
-            Port            => $self->{PORT},
+            Alias           => $self->alias,
+            Hostname        => $self->hostname,
+            Port            => $self->port,
             ClientFilter    => 'POE::Filter::HTTPD',
+
             InlineStates    => {
                 # Declare the event for the postback which will be handed to the
                 # handler of a given action. When the server receives a GET request
@@ -68,6 +68,7 @@ sub startServer {
                 # with the data provided by the handler.
                 returnData  =>  \&returnData,
             },
+
             ClientInput     => sub {
                 my ($kernel, $heap, $session, $request) = @_[KERNEL, HEAP, SESSION, ARG0];
 
@@ -87,25 +88,29 @@ sub startServer {
                 my $uri = $request->uri();
                 $uri =~ s/\?.*//;
 
-                my $action = $self->{ACTIONS}{$method}{$uri};
+                my $handlerId = $method.$uri;
 
-                if (!defined $action) {
+                if (! $self->hasHandler($handlerId)) {
                     my $errorMessage = "This URI ($uri) has no action specified for the method used ($method)";
                     $self->Logmsg($errorMessage);
                     sendHttpReply($kernel, $heap, HTTP_BAD_REQUEST, "text/html", $errorMessage);
                     return;
                 }
 
+                my $handler = $self->handlers->{$handlerId};
+
                 switch($method) {
                     case 'POST' {
-                        $self->handlePostRequest($kernel, $heap, $request, $action);
+                        $self->handlePostRequest($kernel, $heap, $request, $handler);
                     }
                     case 'GET' {
-                        $self->handleGetRequest($kernel, $session, $heap, $request, $action);
+                        $self->handleGetRequest($kernel, $session, $heap, $request, $handler);
                     }
                 }
             },
         );
+
+    $self->sessionId($sessionId);
 }
 
 # Stops the server
@@ -113,14 +118,13 @@ sub startServer {
 sub stopServer {
     my $self = shift;
 
-    if (! defined $self->{SERVER_SESSION_ID}) {
-        $self->Logmsg("Cannot shutdown if the server is not started yet");
+    if (! defined $self->sessionId) {
+        $self->Logmsg("HttpServer->stop: Cannot shutdown. No server is currently running");
         return HTTP_SERVER_NOT_STARTED;
     }
 
     $self->Logmsg("HttpServer->stop: Shutting down HTTP Server");
-    POE::Kernel->post($self->{SERVER_SESSION_ID}, 'shutdown');
-    delete $self->{SERVER_SESSION_ID};
+    POE::Kernel->post($self->sessionId, 'shutdown');
 }
 
 # This method handles POST requests encoded as x-www-form-urlencoded or json data
@@ -128,13 +132,13 @@ sub stopServer {
 # Once the arguments have been retrieved, the action (postback) will be called with
 # these parameters and a reply will be sent (HTTP_OK)
 sub handlePostRequest {
-    my ($self, $kernel, $heap, $request, $action) = @_;
+    my ($self, $kernel, $heap, $request, $handler) = @_;
 
-    my $mess = "HttpServer->handlePostRequest";
+    my $msg = "HttpServer->handlePostRequest";
 
     # Check that we have a valid request object
     if (!defined $request) {
-        $self->Logmsg("$mess : invalid request object has been provided");
+        $self->Logmsg("$msg : invalid request object has been provided");
         return HTTP_SERVER_REQUEST_INVALID;
     }
 
@@ -156,7 +160,7 @@ sub handlePostRequest {
         }
         else {
             my $errorMessage = "Can only handle input from FORM data or JSON objects passed in content";
-            $self->Logmsg($mess.": ".$errorMessage);
+            $self->Logmsg($msg.": ".$errorMessage);
             sendHttpReply($kernel, $heap, HTTP_BAD_REQUEST, "text/html", $errorMessage);
             return HTTP_SERVER_REQUEST_INVALID_FORMAT;
         }
@@ -166,7 +170,7 @@ sub handlePostRequest {
     # If that's not the case, inform via an Error message
     if (!defined $postArguments) {
         my $errorMessage = "No arguments passed via POST method. Request will be ignored";
-        $self->Logmsg($mess.": ".$errorMessage);
+        $self->Logmsg($msg.": ".$errorMessage);
         sendHttpReply($kernel, $heap, HTTP_BAD_REQUEST, "text/html", $errorMessage);
         return HTTP_SERVER_REQUEST_NO_ARGS;
     }
@@ -179,7 +183,7 @@ sub handlePostRequest {
     sendHttpReply($kernel, $heap, HTTP_OK, "text/html, application/json", "{\"Status\":\"OK\"}");
 
     # Call the action which will handle the update internally
-    $action->($postArguments);
+    $handler->getCallback()->($postArguments);
 }
 
 # This method handles GET requests. We can only send back json objects as replies (application/json)
@@ -189,13 +193,13 @@ sub handlePostRequest {
 # To do this, we produce a postback here, which is passed as argument when calling the action
 # The client must call this postback in order to reply to the client with the required data
 sub handleGetRequest {
-    my ($self, $kernel, $session, $heap, $request, $action) = @_;
+    my ($self, $kernel, $session, $heap, $request, $handler) = @_;
 
-    my $mess = "HttpServer->handleGetRequest";
+    my $msg = "HttpServer->handleGetRequest";
 
     # Check that we have a valid request object
     if (!defined $request) {
-        $self->Logmsg("$mess : invalid request object has been provided");
+        $self->Logmsg("$msg : invalid request object has been provided");
         return HTTP_SERVER_REQUEST_INVALID;
     }
 
@@ -204,8 +208,9 @@ sub handleGetRequest {
 
     if (! $contentType =~ "application/json") {
         my $errorMessage = "We can only reply with JSON objects";
-        $self->Logmsg($mess.": ".$errorMessage);
-        # Paradoxically, we're sending this^ as text :)
+        $self->Logmsg($msg.": ".$errorMessage);
+        # Paradoxically, we're sending this ^ as text :)
+ 
         sendHttpReply($kernel, $heap, HTTP_BAD_REQUEST, "text/html", $errorMessage);
         return HTTP_SERVER_REQUEST_INVALID_FORMAT;
     }
@@ -217,62 +222,7 @@ sub handleGetRequest {
     my $callMeBack= $session->postback('returnData', $heap);
 
     # Call the action, while specifing the GET arguments and the postback method
-    $action->($getArguments, $callMeBack);
-}
-
-# This server won't process any URIs unless a handler is added.
-# The idea is that for a given HTTP method (POST/GET) and for a given URI (/, /example, /example2),
-# we associate a postback which was generated by the entity which wants to process that URI
-# Ex: a POST to [web address]/updatePath will call a postback generated by the CircuitManager
-sub addHandler {
-    my ($self, $type, $action, $callback, $force) = @_;
-
-    if (!defined $action || !defined $callback ||
-        ($type ne 'GET' && $type ne 'POST')) {
-        $self->Logmsg("The specified parameters were invalid. Cannot add action");
-        return HTTP_SERVER_HANDLER_INVALID_PARAMS;
-    }
-
-    if (substr($action, 0, 1) ne "/") {
-        $self->Logmsg("Action should begin with a /");
-        return HTTP_SERVER_HANDLER_INVALID_URI;
-    }
-
-    if (defined $self->{ACTIONS}{$type}{$action} && !$force) {
-        $self->Logmsg("There is already an action specified. Skipping update");
-        return HTTP_SERVER_HANDLER_ALREADY_EXISTS;
-    }
-
-    if (defined $self->{ACTIONS}{$type}{$action} && $force) {
-        # TODO: This server might be needed by multiple instances, change accordingly
-        $self->Logmsg("You have just overridden a previous action");
-    }
-
-    $self->{ACTIONS}{$type}{$action} = $callback;
-}
-
-# Removes a handler from our list
-sub removeHandler {
-    my ($self, $type, $action) = @_;
-
-    if (! defined $type || ! defined $action) {
-        $self->Logmsg("HttpServer->removeHandler : invalid parameters passed to method");
-        return HTTP_SERVER_HANDLER_INVALID_PARAMS;
-    }
-
-    if (! defined $self->{ACTIONS}{$type} || $self->{ACTIONS}{$type}{$action}) {
-        $self->Logmsg("HttpServer->removeHandler : cannot find the specified hash parameters");
-        return HTTP_SERVER_HANDLER_NOT_FOUND;
-    }
-
-    delete $self->{ACTIONS}{$type}{$action};
-}
-
-# Removes *all* the handlers which were defined until now
-sub resetHandlers {
-    my $self = shift;
-    $self->Logmsg("HttpServer->resetHandlers: removing all handles for this http server!");
-    delete $self->{ACTIONS};
+    $handler->getCallback()->($getArguments, $callMeBack);
 }
 
 # A postback will be created and handed to a client whenever someone requests data (via GET)
@@ -293,7 +243,6 @@ sub returnData {
     my $jsonObject = JSON::XS->new->convert_blessed->encode($replyObject);
     sendHttpReply->($kernel, $heap, HTTP_OK, "application/json", $jsonObject);
 }
-
 
 sub sendHttpReply {
     my ($kernel, $heap, $status, $contentType, $message) = @_;

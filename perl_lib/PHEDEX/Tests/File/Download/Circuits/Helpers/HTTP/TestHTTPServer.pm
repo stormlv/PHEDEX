@@ -9,6 +9,8 @@ use Test::More;
 
 # PhEDEx imports
 use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler;
+use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest;
 use PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 
 # Create master session
@@ -33,7 +35,7 @@ POE::Session->create(
 
                 # Stop the http server
                 $httpServer->stopServer();
-                $httpServer->resetHandlers();
+                $httpServer->clearHandlers();
             },
 
             runGetMethodTests   => \&runGetMethodTests,
@@ -64,25 +66,84 @@ sub runGetMethodTests {
         secretAnswer    => 42
     };
 
-    $httpServer->addHandler("GET", "/nodata", $session->postback("postbackForGetHandler"));
-    $httpServer->addHandler("GET", "/", $session->postback("postbackForGetHandler", $testData));
-    $httpServer->addHandler("GET", "/args", $session->postback("postbackForGetHandler", $testData, {'test' => 'result'}));
+    my $handler1 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler(method => 'GET', 
+                                                                                   uri => '/nodata', 
+                                                                                   eventName => 'postbackForGetHandler', 
+                                                                                   session => $session);
+    $httpServer->addHandler($handler1->id, $handler1);
 
-    $httpServer->addHandler("POST", "/post", $session->postback("postbackForPostHandler", $testData));
+    my $handler2 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler(method => 'GET', 
+                                                                                   uri => '/', 
+                                                                                   eventName => 'postbackForGetHandler', 
+                                                                                   session => $session, 
+                                                                                   arguments => [$testData]);
+    $httpServer->addHandler($handler2->id, $handler2);
 
-    # Test error handling
-    $httpClient->httpRequest("GET", "http://localhost:8080/nodata", undef, $session->postback("httpClientPostback", undef, 500));               # Handler supplies an invalid object
-    $httpClient->httpRequest("POST", "http://localhost:8080/nodata", undef, $session->postback("httpClientPostback", undef, 400));              # Handler doesn't exist for this method
-    $httpClient->httpRequest("GET", "http://localhost:8080/invalidmethod", undef, $session->postback("httpClientPostback", undef, 400));        # Handler doesn't exist for this URI
-    $httpClient->httpRequest("POST", "http://localhost:8080/post", ["TEXT", $testData], $session->postback("httpClientPostback", undef, 400));  # POSTed data was text
+    my $handler3 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler(method => 'GET', 
+                                                                                   uri => '/args', 
+                                                                                   eventName => 'postbackForGetHandler', 
+                                                                                   session => $session, 
+                                                                                   arguments => [$testData, {'test' => 'result'}]);
+    $httpServer->addHandler($handler3->id, $handler3);
 
-    # GET tests
-    $httpClient->httpRequest("GET", "http://localhost:8080/", undef, $session->postback("httpClientPostback", $testData, 200));                     # OK
-    $httpClient->httpRequest("GET", "http://localhost:8080/args", {'test' => 'result'}, $session->postback("httpClientPostback", $testData, 200));  # OK
+    my $handler4 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler(method => 'POST', 
+                                                                                   uri => '/post', 
+                                                                                   eventName => 'postbackForPostHandler', 
+                                                                                   session => $session, 
+                                                                                   arguments => [$testData]);
+    $httpServer->addHandler($handler4->id, $handler4);
+
+    ### Test error handling ###
+    
+    # Handler supplies an invalid object
+    my $request1 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://localhost:8080/nodata", 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 500));
+    $httpClient->httpRequest($request1);
+    
+    # Handler doesn't exist for this method
+    my $request2 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://localhost:8080/nodata", 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 400));
+    $httpClient->httpRequest($request2);
+    
+    # Handler doesn't exist for this URI
+    my $request3 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://localhost:8080/invalidmethod", 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 400));
+    $httpClient->httpRequest($request3);
+
+    # POSTed data was text
+    my $request4 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://localhost:8080/post", 
+                                                                                    arguments => ["TEXT", $testData], 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 400));
+    $httpClient->httpRequest($request4);
+
+    ### GET tests### 
+    my $request5 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://localhost:8080/", 
+                                                                                    callback => $session->postback("httpClientPostback", $testData, 200));
+    $httpClient->httpRequest($request5);
+    
+    my $request6 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'GET', 
+                                                                                    url => "http://localhost:8080/args",
+                                                                                    arguments => {'test' => 'result'}, 
+                                                                                    callback => $session->postback("httpClientPostback", $testData, 200));
+    $httpClient->httpRequest($request6);
 
     # POST tests
-    $httpClient->httpRequest("POST", "http://localhost:8080/post", ["JSON", $testData], $session->postback("httpClientPostback", undef, 200));  # OK
-    $httpClient->httpRequest("POST", "http://localhost:8080/post", ["FORM", $testData], $session->postback("httpClientPostback", undef, 200));  # OK
+    my $request7 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://localhost:8080/post", 
+                                                                                    arguments => ["JSON", $testData], 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 200));
+    $httpClient->httpRequest($request7);
+    
+    my $request8 = new PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpRequest(method => 'POST', 
+                                                                                    url => "http://localhost:8080/post", 
+                                                                                    arguments => ["FORM", $testData], 
+                                                                                    callback => $session->postback("httpClientPostback", undef, 200));
+    $httpClient->httpRequest($request8);
 
     $kernel->delay("stopClient" => 2, $httpClient, $httpServer); # stop everything after 2 seconds
 }
