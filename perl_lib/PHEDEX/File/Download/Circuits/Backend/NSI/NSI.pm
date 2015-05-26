@@ -1,15 +1,16 @@
 package PHEDEX::File::Download::Circuits::Backend::NSI::NSI;
 
-use strict;
-use warnings;
+use Moose;
+extends 'PHEDEX::File::Download::Circuits::Backend::Core::Core';
 
-use base 'PHEDEX::File::Download::Circuits::Backend::Core::Core','PHEDEX::Core::Logging';
+use base 'PHEDEX::Core::Logging';
 
 # PhEDEx imports
+use PHEDEX::File::Download::Circuits::Backend::NSI::Action;
 use PHEDEX::File::Download::Circuits::Backend::NSI::Reservation;
-use PHEDEX::File::Download::Circuits::Backend::NSI::ReservationConstants;
-use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;;
-use PHEDEX::File::Download::Circuits::Helpers::External;
+use PHEDEX::File::Download::Circuits::Backend::NSI::StateMachine;
+use PHEDEX::File::Download::Circuits::ResourceManager::ResourceManagerConstants;
+use PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager;
 
 
 # Other imports
@@ -23,54 +24,32 @@ use constant {
     TEARDOWN    => "Teardown",
 };
 
-sub new {
-    my $proto = shift;
-    my $class = ref($proto) || $proto;
-
-    my %params = (
-        TASKER              => undef,
-        ACTION_HANDLER      => undef,
-        TIMEOUT             => 120,
-        
-        QUEUED_ACTIONS      => undef,       # Queue of pending actions
-        CURRENT_ACTION      => undef,       # Current action which is being processed
-        RESERVATIONS        => undef,       # Hash of ConnectionID -> Reservation
-
-        # NSI Tool defaults
-        NSI_TOOL_LOCATION   => '/data/NSI/CLI',
-        NSI_TOOL            => 'nsi-cli-1.2.1-one-jar.jar',
-        NSI_JAVA_FLAGS      =>  '-Xmx256m -Djava.net.preferIPv4Stack=true '.
-                                '-Dlog4j.configuration=file:./config/log4j.properties ',
-                                '-Dcom.sun.xml.bind.v2.runtime.JAXBContextImpl.fastBoot=true ',
-                                '-Dorg.apache.cxf.JDKBugHacks.defaultUsesCaches=true ',
-        NSI_TOOL_PID        => undef,
-        
-        # Provider should also have the truststore containing the aggregator server certificats 
-        # Store password is in: provider-client-https-cc.xml
-        DEFAULT_PROVIDER    => 'provider.script',   # Default provider script name
-        # Requester should also provide the truststore with his certificate and key
-        # Store and key password are in: requester-server-http.xml
-        DEFAULT_REQUESTER   => 'requester.script',  # Default requester script name
-
-        SESSION             => undef,
-        VERBOSE             => 1,
-    );
-
-    my %args = (@_);
-
-    map { $args{$_} = defined($args{$_}) ? $args{$_} : $params{$_} } keys %params;
-    my $self = $class->SUPER::new(%args);
-
-    $self->{UUID} = new Data::UUID;
-    
-    $self->{AGENT_TRANSLATION} = {
-        NODE_A  =>  "URL 1",
-        NODE_B  =>  "urn:ogf:network:es.net:2013::star-cr5:10_1_8:+?vlan=1779",
-    };
-   
-    bless $self, $class;
-    return $self;
-}
+has 'taskManager'       => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager', default => sub { PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager->new() });
+has 'actionHandler'     => (is  => 'rw', isa => '');
+has 'timeout'           => (is  => 'rw', isa => 'Int', default => 120);
+has 'actionQueue'       => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Backend::NSI::Action]', 
+                            traits => ['Array'],
+                            handles => {queueAction     => 'push', 
+                                        dequeueAction   => 'shift', 
+                                        actionQueueSize => 'count'});
+has 'currentAction'     => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Backend::NSI::Action');
+has 'reservations'      => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::Backend::NSI::Reservation]', 
+                            traits => '[Hash]',  
+                            handles => {addReservation      => 'set',
+                                        getReservation      => 'get',
+                                        removeReservation   => 'delete',
+                                        hasReservation      => 'exists'});
+has 'nsiToolLocation'   => (is  => 'rw', isa => 'Str', default => '/data/NSI/CLI');
+has 'nsiTool'           => (is  => 'rw', isa => 'Str', default => 'nsi-cli-1.2.1-one-jar.jar');
+has 'nsiToolJavaFlags'  => (is  => 'rw', isa => 'Str', default =>   '-Xmx256m -Djava.net.preferIPv4Stack=true '.
+                                                                    '-Dlog4j.configuration=file:./config/log4j.properties ',
+                                                                    '-Dcom.sun.xml.bind.v2.runtime.JAXBContextImpl.fastBoot=true ',
+                                                                    '-Dorg.apache.cxf.JDKBugHacks.defaultUsesCaches=true ');
+has 'defaultProvider'   => (is  => 'rw', isa => 'Str', default => 'provider.script');   # Provider should also have the truststore containing the aggregator server certificats (store password is in: provider-client-https-cc.xml)
+has 'defaultRequester'  => (is  => 'rw', isa => 'Str', default => 'requester.script');  # Requester should also provide the truststore with his certificate and key (store and key password are in: requester-server-http.xml)
+has 'session'           => (is  => 'rw', isa => 'Ref');
+has 'uuid'              => (is  => 'rw', isa => 'Data::UUID', default => sub {new Data::UUID});
+has 'verbose'           => (is  => 'rw', isa => 'Int');
 
 # Init POE events
 # - declare event 'processToolOutput' which is passed as a postback to External
@@ -81,62 +60,62 @@ sub _poe_init
 
     # Create the action which is going to be called on STDOUT by External
     $kernel->state('processToolOutput', $self);
-    $self->{SESSION} = $session;
-    $self->{ACTION_HANDLER} = $session->postback('processToolOutput');
+    $self->session($session);
+    $self->actionHandler($session->postback('processToolOutput'));
 
     # Parent does the main initialization of POE events
     $self->SUPER::_poe_init($kernel, $session);
     
-    # Create instance running capable of running external tools
-    $self->{TASKER} = PHEDEX::File::Download::Circuits::Helpers::External->new();
-    
     # Launch an instance of the NSI CLI
-    chdir $self->{NSI_TOOL_LOCATION};
-    $self->{NSI_TOOL_PID} = $self->{TASKER}->startCommand("java $self->{NSI_JAVA_FLAGS} -jar $self->{NSI_TOOL}", $self->{ACTION_HANDLER}, $self->{TIMEOUT});
-    $self->{TASKER}->getTaskByPID($self->{NSI_TOOL_PID})->put('nsi override');
+    chdir $self->nsiToolLocation;
+    $self->nsiToolPid = $self->taskManager->startCommand("java ".$self->nsiToolJavaFlags." -jar ".$self->nsiTool, $self->actionHandler, $self->timeout);
+    $self->taskManager->getTaskByPID($self->nsiToolPid)->put('nsi override');
 }
 
 sub getRequestScript {
     my ($self, $providerName, $requesterName, $scriptName) = @_;
     
-    $providerName = $self->{DEFAULT_PROVIDER} if ! defined $providerName;
-    $requesterName = $self->{DEFAULT_REQUESTER} if ! defined $requesterName;
+    $providerName = $self->defaultProvider if ! defined $providerName;
+    $requesterName = $self->defaultRequester if ! defined $requesterName;
     
     if (! defined $scriptName) {
         $self->Alert("The script to load has not been provided")
     }
     
     my $script = "";
-    $script .= "script --file $self->{NSI_TOOL_LOCATION}/scripts/provider/$providerName\n";
-    $script .= "script --file $self->{NSI_TOOL_LOCATION}/scripts/requester/$requesterName\n";
+    $script .= "script --file ".$self->nsiToolLocation."/scripts/provider/$providerName\n";
+    $script .= "script --file ".$self->nsiToolLocation."/scripts/requester/$requesterName\n";
 
     return $script;
 }
 
-sub backendRequestCircuit {
+sub backendRequestResource {
     my ($self, $circuit, $requestCallback) = @_[ OBJECT, ARG0, ARG1];
     $self->queueAction(REQUEST, $circuit, $requestCallback);
 }
 
-sub backendTeardownCircuit {
+sub backendTeardownResource {
     my ($self, $circuit) = @_[ OBJECT, ARG0];
     $self->queueAction(TEARDOWN, $circuit);
 }
 
-# Creates a new action baased on the action type provided (Request, Teardown)
+# Creates a new action based on the action type provided (Request, Teardown)
 # This action is queued and will be executed after the rest of the pending actions have been completed
 # This restriction is due to us using the NSI CLI tool instead of having a native implementation
-sub queueAction {
+sub queueThenExecuteAction {
     my ($self, $actionType, $circuit, $requestCallback) = @_;
 
-    my $newAction = {
-        ID                  => $self->{UUID}->create(),
-        TYPE                => $actionType,
-        CIRCUIT             => $circuit,
-        REQUEST_CALLBACK    => $requestCallback,
-    };
+    if (! defined $actionType || ! defined $circuit || ! defined $circuit) {
+        $self->Logmsg("NSI->queueThenExecuteAction: Invalid parameters have been supplied");
+        return;
+    }
 
-    push(@{$self->{QUEUED_ACTIONS}}, $newAction);
+    my $action = PHEDEX::File::Download::Circuits::Backend::NSI::Action->new(id => $self->{UUID}->create(), 
+                                                                             type => $actionType, 
+                                                                             circuit => $circuit, 
+                                                                             callback => $requestCallback);
+
+    $self->queueAction($action);
     $self->executeNextAction();
 }
 
@@ -144,27 +123,27 @@ sub queueAction {
 sub executeNextAction {
     my $self = shift;
 
-    if (defined $self->{CURRENT_ACTION}) {
+    if (defined $self->currentAction) {
         $self->Logmsg("Other actions are still pending... Will execute new action when appropiate");
         return;
     }
 
-    if (scalar @{$self->{QUEUED_ACTIONS}} == 0) {
+    if ($self->actionQueueSize == 0) {
         $self->Logmsg("The action queue is empty...");
         return;
     }
     
     # Pick the next action from the queue
-    $self->{CURRENT_ACTION} = shift @{$self->{QUEUED_ACTIONS}};
-    my $action = $self->{CURRENT_ACTION};
-    my $circuit = $action->{CIRCUIT};
+    $self->currentAction($self->dequeueAction());
+    my $action = $self->currentAction;
     
-    switch ($action->{TYPE}) {
+    switch ($action->type) {
         case REQUEST {
             my $reservation = PHEDEX::File::Download::Circuits::Backend::NSI::Reservation->new();
-            $reservation->{REQUEST_CALLBACK} = $action->{REQUEST_CALLBACK};
-            $reservation->updateParameters($self->{AGENT_TRANSLATION}, $circuit);
-            $self->{CURRENT_ACTION}->{RESERVATION} = $reservation;
+            $reservation->callback($action->callback);
+            $reservation->updateParameters($action->circuit);
+
+            $self->currentAction->reservation($reservation);
 
             # Set the reservation parameters into the CLI
             my $reserveCommands = $reservation->getReservationSetterScript();
@@ -179,19 +158,17 @@ sub executeNextAction {
         # For now just teardown and request new one...
         
         case TEARDOWN {
-            if (! defined $circuit->{NSI_ID}) {
-                $self->Logmsg("The circuit provided has not Connection ID assigned. Cannot find reservation");
-                return;
-            }
-
             # Get the reservation which was assigned to this circuit and send the CLI commands to terminate reservation
-            my $reservation = $self->{RESERVATIONS}->{$circuit->{NSI_ID}};
+            my $reservation = $self->currentAction->reservation;
             my $terminationCommands = $reservation->getTerminationScript();
+            
+            # TODO: Should probably remove after getting the OK from the NSI controller
+            $self->removeReservation($reservation->connectionId);
             $self->sendToCLI($terminationCommands);
         }
     }
 
-    delete $self->{CURRENT_ACTION};
+    $self->currentAction(undef);
     $self->executeNextAction();
 }
 
@@ -205,7 +182,7 @@ sub sendToCLI {
     }
     
     # Get the task info
-    my $nsiTool = $self->{TASKER}->getTaskByPID($self->{NSI_TOOL_PID});
+    my $nsiTool = $self->taskManager->getTaskByPID($self->nsiToolPid);
     
     foreach my $line (@{$script}) {
         $nsiTool->put($line);
@@ -222,75 +199,88 @@ sub processToolOutput {
 
     switch ($eventName) {
         case 'handleTaskStdOut' {
-            $self->Logmsg("NSI CLI($pid): $output") if $self->{VERBOSE};
-
-            # Try to identify the new state communicated by the NSI CLI tool and most importantly the reservation ID for which it's destined
-            my $result = PHEDEX::File::Download::Circuits::Backend::NSI::ReservationConstants->identifyNextState($output);
-            return if ! defined $result;
-
-            my ($id, $newState) = ($result->[0], $result->[1]);
-
-            # Reservation was created and received a connection ID
-            if ($newState eq STATE_ASSIGNED_ID) {
-                $self->Logmsg("Reservation created (ID: $id");
-                my $reservation = $self->{CURRENT_ACTION}->{RESERVATION};
-                $reservation->{CONNECTION_ID} = $id;
-                $self->{RESERVATIONS}->{$id} = $reservation;
-            }
-
-            # Look for the reservation which has the ID 
-            my $reservation = $self->{RESERVATIONS}->{$id};
-            $reservation->setNextState($newState);
+            $self->Logmsg("NSI CLI($pid): $output") if $self->verbose;
             
-            switch ($reservation->{CURRENT_STATE}) {
+            # Identify the connection ID that the output talks about
+            my $regex = CONNECTION_ID_REGEX;
+            my @matches = $output =~ /$regex/;
+            if (! @matches) {
+                $self->Logmsg("Couldn't find any connection ID");
+                return;
+            }
+            my $connectionId = $matches[0];
+            
+            my $reservation;
+            
+            if ($self->hasReservation($connectionId)) {
+                $reservation = $self->getReservation($connectionId);
+            } else {
+                if ($self->currentAction->reservation->connectionId eq $connectionId) {
+                    $reservation = $self->currentAction->reservation;
+                } else {
+                    $self->Logmsg("Couldn't find any reservation matching this ID");
+                    return;
+                }
+            }
+            
+            my $result = $reservation->stateMachine->identifyNextTransition($output);
+            if (!defined $result) {
+                $self->Logmsg("We received a message intended for reservation with connectionID: $connectionId which is invalid.");
+                $reservation->removeReservation($connectionId);
+                return;
+            };
+            
+            my $transition = $result->[1];
+            $reservation->stateMachine->doTransition();
+
+            switch($reservation->stateMachine->currentState) {
+                case 'AssignedId' {
+                    $reservation->connectionId($connectionId);
+                    $self->addReservation($connectionId, $reservation);
+                }
                 # If the reservation was held, then commit it
-                case STATE_CONFIRMED {
+                case 'Confirmed' {
                     my $script = $reservation->getOverrideScript();
                     push (@{$script}, "nsi commit\n");
                     $self->sendToCLI($script);
                 }
                 
                 # If the reservation was committed, then provision it
-                case STATE_COMMITTED {
+                case 'Commited' {
                     my $script = $reservation->getOverrideScript();
                     push (@{$script}, "nsi provision\n");
                     $self->sendToCLI($script);
                 }
                 
                 # Reservation is now active (dataplane should now work)
-                case STATE_ACTIVE {
+                case 'Active' {
                     $self->Logmsg("Circuit creation succeeded");
-                    
-                    my $circuit = $reservation->{CIRCUIT};
-                    $circuit->{NSI_ID} = $reservation->{ID};
-                    
-                    POE::Kernel->post($self->{SESSION}, $reservation->{REQUEST_CALLBACK}, $circuit, undef, CIRCUIT_REQUEST_SUCCEEDED);
+                    POE::Kernel->post($self->session, $reservation->callback, $reservation->circuit, undef, CIRCUIT_REQUEST_SUCCEEDED);
                 }
 
                 # Reservation has been terminated
-                case STATE_TERMINATED {
+                case 'Terminated' {
                      $self->Logmsg("Circuit terminated");
+                     $reservation->removeReservation($connectionId);
                      # TODO: Maybe warn the Reservation Manager as well?
                 }
 
                 # The reservation failed for whatever reason
-                case [STATE_ERROR, STATE_ERROR_CONFIRM_FAIL, STATE_ERROR_COMMIT_FAIL, STATE_ERROR_PROVISION_FAIL] {
+                case ['Error', 'ConfirmFail', 'CommitFail', 'ProvisionFail'] {
                     $self->Logmsg("Circuit creation failed");
+                    $reservation->removeReservation($connectionId);
                     # The circuit failed, we need to make sure we clean up everything
                     my $terminationCommands = $reservation->getTerminationScript();
                     $self->sendToCLI($terminationCommands);
-                    
-                    my $circuit = $reservation->{CIRCUIT};
-                    POE::Kernel->post($self->{SESSION}, $reservation->{REQUEST_CALLBACK}, $circuit, undef, CIRCUIT_REQUEST_FAILED);
+                    POE::Kernel->post($self->session, $reservation->callback, $reservation->circuit, undef, CIRCUIT_REQUEST_FAILED);
                 }
-
-            };
+            }
         }
 
         case 'handleTaskStdError' {
             $self->Logmsg("An error has occured with NSI CLI ($pid): $output");
         }
-        
+
         case 'handleTaskSignal' {
             $self->Logmsg("NSI CLI tool is being terminated ");
         }
