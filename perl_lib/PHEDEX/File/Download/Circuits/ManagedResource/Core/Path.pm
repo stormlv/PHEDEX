@@ -17,6 +17,7 @@ has 'nodeA'         => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::M
 has 'nodeB'         => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Node', required => 1);
 has 'type'          => (is  => 'ro', isa => 'LayerType', required => 1);
 has 'maxBandwidth'  => (is  => 'rw', isa => 'Int');
+has 'maxCircuits'   => (is  => 'rw', isa => 'Int', default => 10); # Maximum number of simultaneous circuits at a given time
 
 sub BUILD {
     my $self = shift;
@@ -24,20 +25,18 @@ sub BUILD {
     $self->maxBandwidth($maxBW);
 }
 
-
-sub getSiteNameA {
+sub getAppNameA {
     my $self = shift;
-    return $self->nodeA->siteName;
+    return $self->nodeA->appName;
 }
 
-sub getSiteNameB {
+sub getAppNameB {
     my $self = shift;
-    return $self->nodeB->siteName;
+    return $self->nodeB->appName;
 }
 sub getName {
     my $self = shift;
-    return &getPath($self->getSiteNameA, $self->getSiteNameB, $self->bidirectional);
+    return &getPath($self->getAppNameA, $self->getAppNameB, $self->bidirectional);
 }
-
 
 1;

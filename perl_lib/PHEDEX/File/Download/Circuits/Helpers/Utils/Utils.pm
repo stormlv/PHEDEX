@@ -6,11 +6,14 @@ use warnings;
 use Scalar::Util qw(blessed);
 
 use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+use POSIX qw(strftime);
 
 use base 'Exporter';
 our @EXPORT = qw(
                 compareObject
                 checkPort determineAddressType replaceHostnameInURL
+                getPath getFormattedTime
+                checkArguments
                 );
 
 ########################Generic functions########################
@@ -107,4 +110,45 @@ sub replaceHostnameInURL {
                     (checkPort($newPort) eq PORT_VALID ? ":".$newPort : "").$extractedPath;
 
     return $newURL;
+}
+
+# Returns the link name in the form of Node1-to-Node2 or Node1-Node2 from two given nodes
+sub getPath {
+    my ($nodeA, $nodeB, $bidirectional) = @_;
+    return undef if (! checkArguments(@_) || $nodeA eq $nodeB);
+
+    my $link = $bidirectional? "-":"-to-";
+    my $name;
+    
+    if ($bidirectional) {
+        $name = ($nodeA cmp $nodeB) == -1 ? $nodeA.$link.$nodeB : $nodeB.$link.$nodeA;
+    } else {
+        $name = $nodeA.$link.$nodeB;
+    }
+
+    return $name;
+}
+
+# Generates a human readable date and time - mostly used when saving, in the state file name
+sub getFormattedTime{
+    my ($time, $includeMilis) = @_;
+
+    return if ! defined $time;
+
+    my $milis = '';
+
+    if ($includeMilis) {
+        $milis = sprintf("%.4f", $time - int($time));
+        $milis  =~ s/^.//;
+    }
+
+    return strftime('%Y%m%d-%Hh%Mm%S', gmtime(int($time))).$milis;
+}
+
+sub checkArguments {
+    # Check to see if the arguments are in order
+    foreach my $arg (@_) {
+        return undef if (! defined $arg);
+    }
+    return 1;
 }

@@ -26,7 +26,7 @@ sub createObject {
     return $object;
 }
 
-sub testComparison {    
+sub testComparison {
     my $object1 = createObject("ONE");
     my $object2 = createObject("ONE");
     my $object3 = createObject("TWO");
@@ -37,9 +37,19 @@ sub testComparison {
     ok(!compareObject($object1, $object3),"Comparison with almost identical object");
 }
 
+sub testGetPath {
+    my $msg = 'TestUtils->testGetPath';
+    is(getPath('NodeA', 'NodeB', 1), 'NodeA-NodeB', "$msg: Correctly identified path");
+    is(getPath('NodeB', 'NodeA', 1), 'NodeA-NodeB', "$msg: Bidirectional path still shows up correctly");
+    is(getPath('NodeA', 'NodeB', 0), 'NodeA-to-NodeB', "$msg: Correctly identified unidirectional path");
+    is(getPath('NodeB', 'NodeA', 0), 'NodeB-to-NodeA', "$msg: Correctly identified unidirectional path");
+    ok(! getPath('NodeA', 'NodeA', 0), "$msg: Correctly identified invalid path");
+}
+
 # Collection of tests to run for this section
 sub testGenericFunctions {
-    testComparison(); 
+    testComparison();
+    testGetPath();
 }
 
 #######################IP helper functions########################
