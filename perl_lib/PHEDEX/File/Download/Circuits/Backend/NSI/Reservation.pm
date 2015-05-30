@@ -13,7 +13,7 @@ use Moose::Util::TypeConstraints;
     subtype 'ConnectionId', as 'Str', where { my $regex = CONNECTION_ID_REGEX(); $_ =~ /$regex/ }, message { "The value you provided is not a valid connection id"};
 no Moose::Util::TypeConstraints;
 
-has 'circuit'       => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource');
+has 'resource'      => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource');
 has 'callback'      => (is  => 'rw', isa => 'Ref');
 has 'connectionId'  => (is  => 'rw', isa => 'ConnectionId');
 has 'parameters'    => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Backend::NSI::ReservationParam', 
@@ -24,12 +24,21 @@ has 'stateMachine'  => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::B
 # Updates the parameters of the reservation based on the circuit requested
 sub updateParameters {
     my ($self, $circuit) = @_;
-    $self->circuit($circuit);
-    $self->parameters->gri->value($circuit->id);
+    $self->resource($circuit);
+#    $self->parameters->gri->value("No GRI");
     $self->parameters->sourceStp->value($circuit->path->nodeA->netName);
     $self->parameters->destinationStp->value($circuit->path->nodeB->netName);
     # For now ResourceManager cannot provide a start time - it can only provide an end time (based on the lifetime param)
-    $self->parameters->endTime->value($circuit->lifetime." sec");
+    my $minutes = $circuit->lifetime / 60;
+    my $hours = $circuit->lifetime / 3600;
+    
+    if ($hours > 0) {
+        $self->parameters->endTime->value("$hours hours");
+    } elsif ($minutes > 0) {
+        $self->parameters->endTime->value("$minutes minutes");
+    } else {
+        $self->parameters->endTime->value($circuit->lifetime." seconds");
+    }
 }
 
 # Provides the NSI CLI script which updates the current CLI reservation parameters

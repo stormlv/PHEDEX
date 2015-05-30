@@ -18,14 +18,14 @@ use constant {
     EXTERNAL_TASK                   =>          3,
 };
 
-has 'runningTasks'  => (is  => 'ro', isa => 'HashRef',
+has 'runningTasks'  => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Circuits::Helpers::Tasks::Task]',
                         traits  => ['Hash'], 
                         handles => {addTask     => 'set',
                                     getTask     => 'get',
                                     hasTask     => 'exists',
                                     removeTask  => 'delete', 
                                     clearTasks  => 'clear'});
-has 'verbose'       => (is  => 'rw', isa => 'Bool');
+has 'verbose'       => (is  => 'rw', isa => 'Bool', default => 0);
 
 # Launches an external command
 # If an action is specified (callback/postback), it will be called for each event (STDOUT, STDERR, SIGCHLD)
@@ -149,7 +149,7 @@ sub handleTaskClose {
 sub handleTaskSignal {
     my ($self, $sendingEvent, $heap, $pid) = @_[OBJECT, STATE, HEAP, ARG1];
 
-    my $msg = "External->handleTaskSignal";
+    my $msg = "TaskManager->handleTaskSignal";
 
     my $task = $heap->{tasks_by_pid}{$pid};
     my $action = $self->getTask($task->PID)->action;

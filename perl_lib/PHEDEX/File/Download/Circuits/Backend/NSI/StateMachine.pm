@@ -8,20 +8,30 @@ use PHEDEX::File::Download::Circuits::Backend::NSI::StateMachineTransition;
 use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
 
 use constant CONNECTION_ID_REGEX => "(([\\d\\w]{8})((-[\\d\\w]{4}){3})-([\\d\\w]{12}))";
-our @EXPORT = qw(CONNECTION_ID_REGEX);
+our @EXPORT = qw(TRANSITIONS CONNECTION_ID_REGEX);
+
+use constant TRANSITIONS => ["Submitted reserve, new connectionId = ".CONNECTION_ID_REGEX, 
+                             "Received reserveConfirmed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received reserveFailed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received reserveCommitConfirmed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received reserveCommitFailed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received provisionConfirmed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received provisionFailed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received dataPlaneStateChange for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received terminationConfirmed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received an errorEvent for connectionId: ".CONNECTION_ID_REGEX];
 
 use constant {
-    # RegEx
-    REGEX_ASSIGNED_ID           =>  "Submitted reserve, new connectionId = ".CONNECTION_ID_REGEX,
-    REGEX_CONFIRMED             =>  "Received reserveConfirmed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_CONFIRM_FAIL          =>  "Received reserveFailed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_COMMITTED             =>  "Received reserveCommitConfirmed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_COMMIT_FAIL           =>  "Received reserveCommitFailed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_PROVISIONED           =>  "Received provisionConfirmed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_PROVISION_FAIL        =>  "Received provisionFailed for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_ACTIVE                =>  "Received dataPlaneStateChange for connectionId: ".CONNECTION_ID_REGEX,
-    REGEX_TERMINATED            =>  "Received terminationConfirmed for connectionId: ".CONNECTION_ID_REGEX,         # TODO: Recheck this REGEX
-    REGEX_GENERIC_FAIL          =>  "Received an errorEvent for connectionId: ".CONNECTION_ID_REGEX,
+    REGEX_ASSIGNED_ID           =>  TRANSITIONS->[0],
+    REGEX_CONFIRMED             =>  TRANSITIONS->[1],
+    REGEX_CONFIRM_FAIL          =>  TRANSITIONS->[2],
+    REGEX_COMMITTED             =>  TRANSITIONS->[3],
+    REGEX_COMMIT_FAIL           =>  TRANSITIONS->[4],
+    REGEX_PROVISIONED           =>  TRANSITIONS->[5],
+    REGEX_PROVISION_FAIL        =>  TRANSITIONS->[6],
+    REGEX_ACTIVE                =>  TRANSITIONS->[7],
+    REGEX_TERMINATED            =>  TRANSITIONS->[8],
+    REGEX_GENERIC_FAIL          =>  TRANSITIONS->[9],
 };
 
 # Define enums
@@ -44,6 +54,19 @@ has 'transitions'       => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download:
                                         getAllTransitions   => 'values'});
 has 'isInTerminalState' => (is  => 'rw', isa => 'Bool', default => '0');
 has 'verbose'           => (is  => 'rw', isa => 'Bool', default => '0');
+
+# Static method
+sub isValidMessage {
+    my $message = shift;
+    foreach my $transition (@{TRANSITIONS()}) {
+        my @matches = $message =~ /$transition/;
+        if (@matches) {
+                my $connectionID = $matches[0];
+                return $connectionID;
+         }
+    }
+    return undef;
+}
 
 sub BUILD {
     my $self = shift;
