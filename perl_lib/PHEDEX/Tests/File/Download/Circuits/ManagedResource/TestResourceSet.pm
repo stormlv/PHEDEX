@@ -5,8 +5,6 @@ use warnings;
 
 use Test::More;
 
-use PHEDEX::Core::Timing;
-
 use PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet;
 
 use PHEDEX::Tests::Helpers::ObjectCreation;

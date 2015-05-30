@@ -1,7 +1,6 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
 
 use Moose;
-use Moose::Util::TypeConstraints;
 
 extends 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource';
 
@@ -15,32 +14,18 @@ use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
 
 use Switch;
 
-subtype 'IP', as 'Str', where {&determineAddressType($_) ne ADDRESS_INVALID}, message { "The value you provided is not a valid hostname or IP(v4/v6)"};
+use Moose::Util::TypeConstraints;
+    subtype 'IP', as 'Str', where {&determineAddressType($_) ne ADDRESS_INVALID}, message { "The value you provided is not a valid hostname or IP(v4/v6)"};
+no Moose::Util::TypeConstraints;
 
 has '+resourceType'     => (is  => 'ro', default => 'Circuit', required => 0);
-has 'establishedTime'   => (is  => 'rw', isa => 'Num');
+
 has 'ipA'               => (is  => 'rw', isa => 'IP');
 has 'ipB'               => (is  => 'rw', isa => 'IP');
-has 'lifetime'          => (is  => 'rw', isa => 'Num', default => 6*HOUR);
-has 'requestedTime'     => (is  => 'rw', isa => 'Num');
-has 'requestTimeout'    => (is  => 'rw', isa => 'Int', default => 5*MINUTE);
 
 sub BUILD {
     my $self = shift;
     $self->stateDir($self->stateDir."/".$self->resourceType);
-}
-
-# Returns the expiration time if the circuit is Online
-sub getExpirationTime {
-    my $self = shift;
-    return $self->status eq 'Online' && defined $self->establishedTime ? $self->establishedTime + $self->lifetime : undef;
-}
-
-# Checks to see if the circuit expired or not (if LIFETIME was defined)
-sub isExpired {
-    my $self = shift;
-    my $expiration = $self->getExpirationTime;
-    return defined $expiration && $expiration < &mytimeofday() ? 1 : 0;
 }
 
 # Method used to switch state from OFFLINE to REQUESTING

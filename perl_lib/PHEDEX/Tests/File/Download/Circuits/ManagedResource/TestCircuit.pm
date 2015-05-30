@@ -20,9 +20,9 @@ use PHEDEX::Tests::Helpers::ObjectCreation;
 sub testInitialisation {
     my $msg = "TestCircuit->testInitialisation";
     
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeA', netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeB', netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     
     
     # Create circuit and initialise it
@@ -30,8 +30,8 @@ sub testInitialisation {
                                                                                       path => $path);
     
     ok($testCircuit->id, "$msg: ID set");
-    is($testCircuit->path->getSiteNameA, 'NodeA', "$msg: Object initialisation - Node_A set");
-    is($testCircuit->path->getSiteNameB, 'NodeB', "$msg: Object initialisation - Node_B set");
+    is($testCircuit->path->nodeA->appName, 'NodeA', "$msg: Object initialisation - Node_A set");
+    is($testCircuit->path->nodeB->appName, 'NodeB', "$msg: Object initialisation - Node_B set");
     is($testCircuit->backendType, 'Dummy', "$msg: Object initialisation - Backend set");
     is($testCircuit->status, 'Offline', "$msg: Object initialisation - Status set to offline");
     is($testCircuit->stateDir, '/tmp/managed/Circuit', "$msg: Object initialisation - Correct state folder set");
@@ -81,9 +81,9 @@ sub testSaveErrorHandling {
     # Clean tmp dir before everything else
     File::Path::rmtree('/tmp/managed/Circuit', 1, 1) if (-d '/tmp/managed/Circuit');
     
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeA', netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeB', netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     
     my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy',
                                                                                       path => $path);
@@ -181,9 +181,9 @@ sub testRemoveStateFiles {
 sub testStatusChange{
     my $msg = "TestCircuit->testStatusChange";
     
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'T2_ANSE_GENEVA', endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'T2_ANSE_AMSTERDAM', endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_GENEVA', netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_AMSTERDAM', netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     
     my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy',
                                                                                       path => $path);

@@ -12,8 +12,8 @@ use PHEDEX::Core::Timing;
 use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
-use PHEDEX::File::Download::Circuits::ManagedResource::Node;
-use PHEDEX::File::Download::Circuits::ManagedResource::Path;
+use PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
+use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 
 use PHEDEX::Tests::Helpers::ObjectCreation;
 
@@ -22,17 +22,17 @@ use PHEDEX::Tests::Helpers::ObjectCreation;
 sub testInitialisation {
     my $msg = "TestBandwidth->testInitialisation";
     
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeA', endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => 'NodeB', endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeA', netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'NodeB', netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     
     # Create circuit and initialise it
     my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(backendType => 'Dummy',
                                                                                           path => $path);
     
     ok($testBandwidth->id, "$msg: ID set");
-    is($testBandwidth->path->getSiteNameA, 'NodeA', "$msg: Object initialisation - Node_A set");
-    is($testBandwidth->path->getSiteNameB, 'NodeB', "$msg: Object initialisation - Node_B set");
+    is($testBandwidth->path->getAppNameA, 'NodeA', "$msg: Object initialisation - Node_A set");
+    is($testBandwidth->path->getAppNameB, 'NodeB', "$msg: Object initialisation - Node_B set");
     is($testBandwidth->backendType, 'Dummy', "$msg: Object initialisation - Backend set");
     is($testBandwidth->status, 'Offline', "$msg: Object initialisation - Status set to offline");
     is($testBandwidth->stateDir, '/tmp/managed/Bandwidth', "$msg: Object initialisation - Correct state folder set");

@@ -29,22 +29,27 @@ use Moose::Util::TypeConstraints;
     enum 'StatusType',      STATUS_TYPES;
 no Moose::Util::TypeConstraints;
 
-# TODO Add the ID of the physical circuit to which this network resource is mapped to
- 
-# Required attributes
-has 'backendType'       => (is  => 'ro', isa => 'Str' ,         required => 1);
-has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
-has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Path', required => 1);
-
-# Pre-initialised attributes
 has 'bandwidthAllocated'    => (is  => 'rw', isa => 'Int',          default => 0);
 has 'bandwidthRequested'    => (is  => 'rw', isa => 'Int',          default => 0);
 has 'bandwidthUsed'         => (is  => 'rw', isa => 'Int',          default => 0);
+has 'backendType'       => (is  => 'ro', isa => 'Str' ,         required => 1);
+has 'establishedTime'       => (is  => 'rw', isa => 'Num');
+has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', 
+                                traits  => ['Array'], 
+                                handles => {addFailure => 'push', 
+                                            getFailure => 'get', 
+                                            getAllFailures => 'elements'});
 has 'id'                    => (is  => 'ro', isa => 'Str',          builder => '_createID');
-has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', traits  => ['Array'], handles => {addFailure => 'push', getFailure => 'get', getAllFailures => 'elements'});
+has 'lifetime'              => (is  => 'rw', isa => 'Num', default => 6*HOUR);
 has 'name'                  => (is  => 'rw', isa => 'Str');
+has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Path', required => 1);
+has 'physicalId'        => (is  => 'rw', isa => 'Str');
+has 'requestedTime'         => (is  => 'rw', isa => 'Num');
+has 'requestTimeout'        => (is  => 'rw', isa => 'Int', default => 5*MINUTE);
+has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
 has 'scope'                 => (is  => 'rw', isa => 'ScopeType',    default => 'Generic');
-has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Offline', trigger => sub {my $self = shift; $self->lastStatusChange(&mytimeofday());});
+has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Offline', 
+                                trigger => sub {my $self = shift; $self->lastStatusChange(&mytimeofday());});
 has 'stateDir'              => (is  => 'rw', isa => 'Str',          default => '/tmp/managed');
 has 'lastStatusChange'      => (is  => 'rw', isa => 'Num',          default => &mytimeofday());
 has 'verbose'               => (is  => 'rw', isa => 'Bool',         default => 1);
@@ -54,6 +59,19 @@ sub _createID {
     my $ug = new Data::UUID;
     my $id = $ug->to_string($ug->create());
     return $id;
+}
+
+# Returns the expiration time if the resource is Online
+sub getExpirationTime {
+    my $self = shift;
+    return $self->status eq 'Online' && defined $self->establishedTime ? $self->establishedTime + $self->lifetime : undef;
+}
+
+# Checks to see if the resource expired or not (if LIFETIME was defined)
+sub isExpired {
+    my $self = shift;
+    my $expiration = $self->getExpirationTime;
+    return defined $expiration && $expiration < &mytimeofday() ? 1 : 0;
 }
 
 sub getLinkName {

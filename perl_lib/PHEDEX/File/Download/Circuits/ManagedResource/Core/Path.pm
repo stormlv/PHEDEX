@@ -25,18 +25,9 @@ sub BUILD {
     $self->maxBandwidth($maxBW);
 }
 
-sub getAppNameA {
-    my $self = shift;
-    return $self->nodeA->appName;
-}
-
-sub getAppNameB {
-    my $self = shift;
-    return $self->nodeB->appName;
-}
 sub getName {
     my $self = shift;
-    return &getPath($self->getAppNameA, $self->getAppNameB, $self->bidirectional);
+    return &getPath($self->nodeA->appName, $self->nodeB->appName, $self->bidirectional);
 }
 
 1;
