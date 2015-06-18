@@ -1,6 +1,9 @@
 package PHEDEX::File::Download::Circuits::Common::Failure;
 
 use Moose;
+use MooseX::Storage;
+
+with Storage('format' => 'YAML', 'io' => 'File');
 
 has 'comment'       => (is  => 'ro', isa => 'Str',  required => 1);
 has 'errorCode'     => (is  => 'rw', isa => 'Int');

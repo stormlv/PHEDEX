@@ -208,7 +208,9 @@ sub backendRequestResource {
 sub backendUpdateResource {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     my $msg = "Core->backendUpdateResource";
-    
+
+    $self->Logmsg("$msg: This method is not supported ATM");
+
     if (! defined $resource || ! defined $callback) {
         $self->Logmsg("$msg: Some arguments are not defined");
         return;

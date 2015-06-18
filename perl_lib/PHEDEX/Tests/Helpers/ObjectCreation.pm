@@ -6,14 +6,26 @@ use warnings;
 use PHEDEX::Core::Timing;
 
 use PHEDEX::File::Download::Circuits::Common::Constants;
-use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
-
-#use PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
 use base 'Exporter';
 
-our @EXPORT = qw(createRequestingCircuit createEstablishedCircuit createOfflineCircuit createTask
-                 createOfflineBandwidth createRunningBandwidth createUpdatingBandwidth);
+our @EXPORT = qw(createNewCircuit createRequestingCircuit createEstablishedCircuit createTask);
+
+sub createNewCircuit {
+    my ($req_time, $backend, $from, $to, $life, $req_bandwidth) = @_;
+
+    $backend = $backend || 'Other::Dummy';
+    $from = $from || 'T2_ANSE_GENEVA';
+    $to = $to || 'T2_ANSE_AMSTERDAM';
+    $req_time = $req_time || 1433116800;
+
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => $from, netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => $to,   netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+
+    return PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => $backend, path => $path);
+}
 
 sub createRequestingCircuit {
     my ($req_time, $backend, $from, $to, $life, $req_bandwidth) = @_;
@@ -23,11 +35,11 @@ sub createRequestingCircuit {
     $req_time = $req_time || 1398426904;
     $backend = $backend || 'Other::Dummy';
     
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $from, endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $to, endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
+    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => $from, netName => 'STP1', maxBandwidth => 111);
+    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => $to, netName => 'STP2', maxBandwidth => 222);
+    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     
-    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => $backend,
+    my $testCircuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendName => $backend,
                                                                                       path => $path);
 
     $testCircuit->registerRequest($life, $req_bandwidth);
@@ -49,57 +61,6 @@ sub createEstablishedCircuit {
     $testCircuit->establishedTime($est_time);
 
     return $testCircuit;
-}
-
-sub createOfflineCircuit {
-    my ($time) = @_;
-    my $testCircuit = createEstablishedCircuit();
-    $testCircuit->registerTakeDown();
-    $testCircuit->lastStatusChange($time) if $time;
-    return $testCircuit;
-}
-
-sub createOfflineBandwidth {
-    my ($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax) = @_;
-
-    $lastUpdated = $lastUpdated || &mytimeofday();
-    $from = $from || 'T2_ANSE_GENEVA';
-    $to = $to || 'T2_ANSE_AMSTERDAM';
-    $backend = $backend || 'Other::Dummy';
-
-    my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $from, endpointName => 'STP1', maxBandwidth => 111);
-    my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Node->new(siteName => $to, endpointName => 'STP2', maxBandwidth => 222);
-    my $path = PHEDEX::File::Download::Circuits::ManagedResource::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
-    
-    my $testBandwidth = PHEDEX::File::Download::Circuits::ManagedResource::Bandwidth->new(backendType => $backend,
-                                                                                          path => $path);
-    $testBandwidth->lastStatusChange($lastUpdated);
-    $testBandwidth->bandwidthStep($bStep) if defined $bStep;
-    $testBandwidth->bandwidthMin($bMin) if defined $bMin;
-    $testBandwidth->bandwidthMax($bMax)if defined $bMax;
-    
-
-    return $testBandwidth;
-}
-
-sub createUpdatingBandwidth {
-    my ($lastUpdated, $backend, $from, $to, $bandwidth, $bStep, $bMin, $bMax) = @_;
-    
-    $bandwidth = $bandwidth || 500;
-
-    my $testBandwidth = createOfflineBandwidth($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax);
-    $testBandwidth->registerUpdateRequest($bandwidth);
-    
-    return $testBandwidth;
-}
-
-sub createRunningBandwidth {
-    my ($lastUpdated, $backend, $from, $to, $bandwidth, $bStep, $bMin, $bMax) = @_;
-    
-    my $testBandwidth = createUpdatingBandwidth($lastUpdated, $backend, $from, $to, $bStep, $bMin, $bMax);
-    $testBandwidth->registerUpdateSuccessful();
-    
-    return $testBandwidth;
 }
 
 sub createTask {

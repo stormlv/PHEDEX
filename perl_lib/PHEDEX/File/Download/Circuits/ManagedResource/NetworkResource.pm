@@ -1,77 +1,145 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
 use Moose;
-use base 'PHEDEX::Core::Logging', 'Exporter';
+use MooseX::Storage;
 
-use Data::Dumper;
+# Chose YAML to as a format since it seems to be more human readable than the JSON output
+# that MooseX::Storage puts out (which cannot be configured)
+with Storage('format' => 'YAML', 'io' => 'File');
+
+use base 'PHEDEX::Core::Logging';
+
 use Data::UUID;
-use File::Path;
-use POSIX;
-use Time::HiRes qw(time);
+use Switch;
 
-use PHEDEX::Core::Command;
-use PHEDEX::Core::Timing;
-use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
 use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
-
-$Data::Dumper::Terse = 1;
-$Data::Dumper::Indent = 1;
-
-our @EXPORT = qw(openState);
-
+use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 
 # Define enums
 use Moose::Util::TypeConstraints;
-    enum 'ResourceType',    RESOURCE_TYPES;
     enum 'ScopeType',       SCOPE_TYPES;
     enum 'StatusType',      STATUS_TYPES;
+    subtype 'PositiveNum', as 'Num', where { $_ >= 0 }, message { "The number you provided, $_, was not a positive number" };
 no Moose::Util::TypeConstraints;
 
-has 'bandwidthAllocated'    => (is  => 'rw', isa => 'Int',          default => 0);
-has 'bandwidthRequested'    => (is  => 'rw', isa => 'Int',          default => 0);
-has 'bandwidthUsed'         => (is  => 'rw', isa => 'Int',          default => 0);
-has 'backendType'       => (is  => 'ro', isa => 'Str' ,         required => 1);
-has 'establishedTime'       => (is  => 'rw', isa => 'Num');
+# TODO: Check if it's possible to add a callback attribute.
+# It would be useful to notify the RM when the state changes
+# Remains to be checked how it handles serialisation ...
+has 'backendName'           => (is  => 'ro', isa => 'Str', required => 1);
+has 'bandwidthAllocated'    => (is  => 'rw', isa => 'PositiveNum', default => 0);
+has 'bandwidthRequested'    => (is  => 'rw', isa => 'PositiveNum', default => 0);
+has 'bandwidthUsed'         => (is  => 'rw', isa => 'PositiveNum', default => 0);
+has 'establishedTime'       => (is  => 'rw', isa => 'PositiveNum');
 has 'failures'              => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Common::Failure]', 
                                 traits  => ['Array'], 
-                                handles => {addFailure => 'push', 
-                                            getFailure => 'get', 
-                                            getAllFailures => 'elements'});
-has 'id'                    => (is  => 'ro', isa => 'Str',          builder => '_createID');
-has 'lifetime'              => (is  => 'rw', isa => 'Num', default => 6*HOUR);
-has 'name'                  => (is  => 'rw', isa => 'Str');
-has 'path'              => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Path', required => 1);
-has 'physicalId'        => (is  => 'rw', isa => 'Str');
-has 'requestedTime'         => (is  => 'rw', isa => 'Num');
-has 'requestTimeout'        => (is  => 'rw', isa => 'Int', default => 5*MINUTE);
-has 'resourceType'      => (is  => 'ro', isa => 'ResourceType', required => 1);
+                                handles => {addFailure      => 'push', 
+                                            getFailure      => 'get',
+                                            getAllFailures  => 'elements',
+                                            hasFailures     => 'is_empty',
+                                            countFailures   => 'count',
+                                            filterFailures  => 'grep'}, # grep requires a subroutine which implements the matching logic (elements available to sub in $_);
+                                trigger =>  \&_healthCheck);
+has 'id'                    => (is  => 'ro', isa => 'Str', 
+                                default => sub { my $ug = new Data::UUID; $ug->to_string($ug->create()); });
+has 'lifetime'              => (is  => 'rw', isa => 'PositiveNum', default => 6*HOUR);
+has 'maxFailureCount'       => (is  => 'rw', isa => 'PositiveNum', default => 1000);
+has 'path'                  => (is  => 'ro', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::Core::Path', required => 1);
+has 'physicalId'            => (is  => 'rw', isa => 'Str');
+has 'requestedTime'         => (is  => 'rw', isa => 'PositiveNum');
 has 'scope'                 => (is  => 'rw', isa => 'ScopeType',    default => 'Generic');
-has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Offline', 
-                                trigger => sub {my $self = shift; $self->lastStatusChange(&mytimeofday());});
-has 'stateDir'              => (is  => 'rw', isa => 'Str',          default => '/tmp/managed');
-has 'lastStatusChange'      => (is  => 'rw', isa => 'Num',          default => &mytimeofday());
+has 'status'                => (is  => 'rw', isa => 'StatusType',   default => 'Created');
+has 'stateDir'              => (is  => 'rw', isa => 'Str',          default => '/tmp/resources');
+has 'lastStatusChange'      => (is  => 'rw', isa => 'PositiveNum',  default => &mytimeofday());
 has 'verbose'               => (is  => 'rw', isa => 'Bool',         default => 1);
 
-# Builder used for the creation of the ID
-sub _createID {
-    my $ug = new Data::UUID;
-    my $id = $ug->to_string($ug->create());
-    return $id;
+sub _healthCheck {
+    my ($self, $newState, $oldState) = @_;
+    my $msg = "NetworkResource->healthCheck";
+    if ($self->countFailures > $self->maxFailureCount) {
+        $self->Logmsg("$msg: Maximum failure count has been exceeded. Taking the circuit offline");
+        $self->setStatus("Offline");
+    }
+}
+
+sub setStatus {
+    my ($self, $status, $arg0, $arg1) = @_; 
+    my $msg = "NetworkResource->setStatus";
+    
+    # Arg0 = {
+    #         - bwRequested (if requesting or updating)
+    #         - bwAllocated (if switching to online)
+    #        }
+    # Arg1 = physicalID (only used when switching to online)
+    
+    if (! defined $status) {
+        $self->Logmsg("$msg: Invalid arguments provided");
+        return;
+    } 
+
+    # We could replace this by a state machine like in the case of Reservation (NSI), but 
+    # this one is quite trivial, with having only a few states. It can be handled in a simple switch
+    my $timeNow = &mytimeofday();
+    switch($status) {
+        case ['Requesting', 'Updating'] {
+            if ($status eq 'Requesting' && $self->status ne 'Created' ||
+                $status eq 'Updating' && $self->status ne 'Online' ||
+                ! defined $arg0) {
+                $self->Logmsg("$msg: Cannot switch to $status");
+                return;
+            }
+            $self->requestedTime($timeNow);
+            $self->bandwidthRequested($arg0);
+        };
+        case 'Online' {
+            if ($self->status ne 'Requesting' && $self->status ne 'Updating' && ! &checkArguments(@_) ||
+                ! defined $arg0 || ! defined $arg1) {
+                $self->Logmsg("$msg: Cannot switch to $status");
+                return;
+            }
+            $self->establishedTime($timeNow);
+            $self->bandwidthAllocated($arg0);
+            $self->physicalId($arg1);
+        }
+        case 'Offline' {
+            if ($self->status eq 'Created' || $self->status eq 'Offline') {
+                $self->Logmsg("$msg: Cannot switch to $status");
+                return;
+            }
+        }
+        default {
+            $self->Logmsg("$msg: $status is unkown");
+            return;
+        }
+    };
+    
+    $self->status($status);
+    $self->lastStatusChange($timeNow);
+    return $status;
 }
 
 # Returns the expiration time if the resource is Online
 sub getExpirationTime {
     my $self = shift;
-    return $self->status eq 'Online' && defined $self->establishedTime ? $self->establishedTime + $self->lifetime : undef;
+
+    if ($self->status ne 'Online' || ! defined $self->establishedTime) {
+        $self->Logmsg("NetworkResource->getExpirationTime: Resource is not yet online, so to established time has been set");
+        return undef;
+    }
+
+    return $self->establishedTime + $self->lifetime;
 }
 
 # Checks to see if the resource expired or not (if LIFETIME was defined)
 sub isExpired {
     my $self = shift;
     my $expiration = $self->getExpirationTime;
-    return defined $expiration && $expiration < &mytimeofday() ? 1 : 0;
+    if (! defined $expiration) {
+        $self->Logmsg("NetworkResource->isExpired: Resource is not yet online, so to established time has been set");
+        return 0;
+    };
+    return $expiration <= &mytimeofday(); 
 }
 
 sub getLinkName {
@@ -79,126 +147,53 @@ sub getLinkName {
     return $self->path->getName;
 }
 
-sub getSaveParams {
+# Returns the location where this resource will be saved
+# eg. /tmp/Online
+sub getSaveLocation {
     my $self = shift;
-    $self->Fatal("NetworkResource->getSaveParams: method not implemented in extending class ", __PACKAGE__);
+    return $self->stateDir.'/'.$self->status;
 }
 
-# Generates a file name in the form of : NODE_A-(to)-NODE_B-UID-time
-# ex. T2_ANSE_Amsterdam-to-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is unidirectional
-# or T2_ANSE_Amsterdam-T2_ANSE_Geneva-FSDAXSDA-20140427-10:00:00, if link is bi-directional.
-# Returns a save path ({STATE_DIR}/[circuits/bod]/$state) and a file path ({STATE_DIR}/[circuits/bod]/$state/$NODE_A-to-$NODE_B-$time)
-sub getSavePaths{
+# Returns the filename of the current resource
+# It has the following form: 
+#       NodeA-[to]-NodeB-PartialUID-Date-Time
+# T2_ANSE_Amsterdam-to-T2_ANSE_Geneva-xyzxyzx-20140427-10:00:00, for a unidirectional link
+# T2_ANSE_Amsterdam-T2_ANSE_Geneva-xyzxyzx-20140427-10:00:00, for a bidirectional link
+sub getSaveFilename {
     my $self = shift;
-    
-    my $msg = "NetworkResource->getSavePaths";
-        
-    if (! defined $self->id) {
-        $self->Logmsg("$msg: Cannot generate a save name for a resource which is not initialised");
-        return;
-    }
-    
-    my ($savePath, $saveTime) = $self->getSaveParams();
-
-    if (!defined $savePath || !defined $saveTime || $saveTime <= 0) {
-        $self->Logmsg("$msg: Invalid parameters in generating a circuit file name");
-        return;
-    }
 
     my $partialID = substr($self->id, 1, 7);
-    my $formattedTime = &getFormattedTime($saveTime);
+    my $formattedTime = &getFormattedTime($self->lastStatusChange);
     my $link = $self->getLinkName();
     my $fileName = $link."-$partialID-".$formattedTime;
-    my $filePath = $savePath.'/'.$fileName;
-
-    # savePath: {STATE_DIR}/[circuits|bod]/$state
-    # fileName: NODE_A-(to)-NODE_B-UID-time
-    # filePath (savePath/fileName): {STATE_DIR}/[circuits|bod]/$state/NODE_A-(to)-NODE_B-UID-time
-    return ($savePath, $fileName, $filePath);
+    
+    return $fileName;
 }
 
-sub checkCorrectPlacement {
-    my ($self, $path) = @_;
-    
-    my $msg = 'NetworkResource->checkCorrectPlacement';
-    
-    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
-    
-    if (! defined $savePath || ! defined $filePath) {
-        $self->Logmsg("$msg: Cannot generate save name...");
-        return ERROR_GENERIC;
-    }
-    
-    if ($filePath ne $path) {
-        $self->Logmsg("$msg: Provided filepath doesn't match where object should be located");
-        return ERROR_GENERIC;
-    } else {
-        return OK;
-    }
+# Simply returns the full save path (folder/filename)
+sub getFullSavePath {
+    my $self = shift;
+    return $self->getSaveLocation()."/".$self->getSaveFilename();
 }
 
 # Saves the current state of the resource
-# For this a valid STATE_DIR must be defined
-# If it's not specified at construction it will automatically be created in /tmp/managed/{RESOURCE_TYPE}
-# Depending on the resource type that's being saved, the STATE_DIR
-# Based on its current state, the resource will create additional subfolders
-# For ex. a circuit will create /requested, /online, /offline
-# A managed bandwidth will create /online, offline
 sub saveState { 
-    my $self = shift;
-
+    my ($self, $overrideLocation) = @_;
     my $msg = 'NetworkResource->saveState';
 
-    # Generate file name based on
-    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
-    if (! defined $filePath) {
-        $self->Logmsg("$msg: An error has occured while generating file name");
-        return ERROR_GENERIC;
-    }
-
-    # Check if state folder existed and create if it didn't
-    if (!-d $savePath) {
-        File::Path::make_path($savePath, {error => \my $err});
+    # Check if state folder existed and attempt to create if it didn't
+    my $location = defined $overrideLocation ? $overrideLocation : $self->getSaveLocation();
+    if (!-d $location) {
+        File::Path::make_path($location, {error => \my $err});
         if (@$err) {
             $self->Logmsg("$msg: State folder did not exist and we were unable to create it");
             return ERROR_PATH_INVALID;
         }
     }
-
-    # Save the resource object
-    my $file = &output($filePath, Dumper($self));
-    if (! $file) {
-        $self->Logmsg("$msg: Unable to save state information");
-        return ERROR_SAVING;
-    } else {
-        $self->Logmsg("$msg: State information successfully saved");
-        return OK;
-    };
-}
-
-# Factory like method : returns a new resource object from a state file on disk
-# It will throw an error if the resource provided is corrupt
-# i.e. it doesn't have an ID, STATUS, RESOURCE_TYPE, BOOKING_BACKEND or nodes defined
-sub openState {
-    my $path = shift;
-
-    return ERROR_PARAMETER_UNDEF if ! defined $path;
-    return ERROR_FILE_NOT_FOUND if (! -e $path);
-
-    my $resource = &evalinfo($path);
-
-    if (! defined $resource || 
-        ! defined $resource->id ||
-        ! defined $resource->resourceType ||
-        ! defined $resource->status ||
-        ! defined $resource->path->nodeA || ! defined $resource->path->nodeB ||
-        ! defined $resource->backendType ||
-        ! defined $resource->stateDir ||
-        ! defined $resource->lastStatusChange) {
-        return ERROR_INVALID_OBJECT;
-    }
-
-    return $resource;
+    
+    # Attempt to save the object
+    my $fullPath = $location."/".$self->getSaveFilename();
+    $self->store($fullPath);
 }
 
 # Attempts to remove the state file associated with this circuit
@@ -206,14 +201,15 @@ sub removeState {
     my $self = shift;
 
     my $msg = 'NetworkResource->removeState';
+    my $location = $self->getSaveLocation();
+    my $fullPath = $self->getFullSavePath();
 
-    my ($savePath, $fileName, $filePath) = $self->getSavePaths();
-    if (!-d $savePath || !-e $filePath) {
+    if (!-d $location || !-e $fullPath) {
         $self->Logmsg("$msg: There's nothing to remove from the state folders");
         return ERROR_GENERIC;
     }
 
-    return !(unlink $filePath) ? ERROR_GENERIC : OK;
+    return !(unlink $fullPath) ? ERROR_GENERIC : OK;
 }
 
 sub TO_JSON {

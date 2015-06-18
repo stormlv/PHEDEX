@@ -7,6 +7,7 @@ use Scalar::Util qw(blessed);
 
 use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
 use POSIX qw(strftime);
+use Time::HiRes 'gettimeofday';
 
 use base 'Exporter';
 our @EXPORT = qw(
@@ -14,6 +15,7 @@ our @EXPORT = qw(
                 checkPort determineAddressType replaceHostnameInURL
                 getPath getFormattedTime
                 checkArguments
+                mytimeofday
                 );
 
 ########################Generic functions########################
@@ -115,9 +117,9 @@ sub replaceHostnameInURL {
 # Returns the link name in the form of Node1-to-Node2 or Node1-Node2 from two given nodes
 sub getPath {
     my ($nodeA, $nodeB, $bidirectional) = @_;
-    return undef if (! checkArguments(@_) || $nodeA eq $nodeB);
+    return undef if (! defined $nodeA || ! defined $nodeB || $nodeA eq $nodeB);
 
-    my $link = $bidirectional? "-":"-to-";
+    my $link = $bidirectional ? "-":"-to-";
     my $name;
     
     if ($bidirectional) {
@@ -151,4 +153,9 @@ sub checkArguments {
         return undef if (! defined $arg);
     }
     return 1;
+}
+
+# High-resolution timing (copied from PhEDEx::Timing to avoid inclusion of PhEDEx packages)
+sub mytimeofday {
+    return scalar (&gettimeofday());
 }

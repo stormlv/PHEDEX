@@ -1,6 +1,9 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 
 use Moose;
+use MooseX::Storage;
+
+with Storage('format' => 'JSON', 'io' => 'File');
 
 use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
 use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
@@ -21,6 +24,7 @@ has 'maxCircuits'   => (is  => 'rw', isa => 'Int', default => 10); # Maximum num
 
 sub BUILD {
     my $self = shift;
+    return if defined $self->maxBandwidth;
     my $maxBW = min $self->nodeA->maxBandwidth, $self->nodeB->maxBandwidth;
     $self->maxBandwidth($maxBW);
 }
