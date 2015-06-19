@@ -57,7 +57,7 @@ sub testCanRequestResource {
     my $activeSet = PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet->new(maxResources => $core->maxResources);
     $core->addActiveSet($path->getName(), $activeSet);
     for (my $i = 0; $i < 5; $i++ ) {
-        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
         $activeSet->addResource($resource);
     }
     ok($core->canRequestResource($request1), "$msg: Can request resource on path nodeA-nodeB");
@@ -65,12 +65,12 @@ sub testCanRequestResource {
     my $pendingSet = PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet->new(maxResources => $core->maxResources);
     $core->addPendingSet($path->getName(), $pendingSet);
     for (my $i = 0; $i < 4; $i++ ) {
-        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
         $pendingSet->addResource($resource);
     }
     ok($core->canRequestResource($request1), "$msg: Can request resource on path nodeA-nodeB");
     
-    my $lastPendingResource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType  => 'Circuit', path => $path);
+    my $lastPendingResource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', resourceType  => 'Circuit', path => $path);
     $pendingSet->addResource($lastPendingResource);
     
     ok(! $core->canRequestResource($request1), "$msg: Can no longer request resource on path nodeA-nodeB");
@@ -78,12 +78,12 @@ sub testCanRequestResource {
     $pendingSet->deleteResource($lastPendingResource);
     ok($core->canRequestResource($request1), "$msg: Can request resource on path nodeA-nodeB");
     
-    my $activeResource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+    my $activeResource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
     $activeSet->addResource($activeResource);
     ok(! $core->canRequestResource($request1), "$msg: Can no longer request resource on path nodeA-nodeB");
     
     for (my $i = 0; $i < 5; $i++ ) {
-        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
         $activeSet->addResource($resource);
     }
     ok(! $core->canRequestResource($request1), "$msg: Can no longer request resource on path nodeA-nodeB");
@@ -101,8 +101,8 @@ sub testHasResource {
     # Add active set
     my $activeSet = PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet->new(maxResources => $core->maxResources);
     $core->addActiveSet($path->getName(), $activeSet);
-    my $resource1 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
-    my $resource2 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+    my $resource1 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
+    my $resource2 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
     # Add resource to active set
     $activeSet->addResource($resource1);
 
@@ -118,11 +118,11 @@ sub testAddRemoveToSets {
     my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'nodeB', netName => 'STP2', maxBandwidth => 222);
     my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
     $core->addPath($path->getName(), $path);
-    my $resource1 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
-    my $resource2 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
-    my $resource3 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
-    my $resource4 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
-    my $resource5 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+    my $resource1 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
+    my $resource2 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
+    my $resource3 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
+    my $resource4 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
+    my $resource5 = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
     
     ok($core->addToPending($resource1), "$msg: Added resource 1 to Pending");
     ok($core->getPendingSet($path->getName)->resourceExists($resource1), "$msg: Correctly added resource 1 to pending");
@@ -167,7 +167,7 @@ sub setupSession {
         my $nodeA = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'nodeA', netName => 'STP1', maxBandwidth => 111);
         my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'nodeB', netName => 'STP2', maxBandwidth => 222);
         my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
-        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy', resourceType    => 'Circuit', path => $path);
+        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
         my $request = PHEDEX::File::Download::Circuits::Backend::Core::ResourceRequest->new( siteA => $nodeA->appName, siteB => $nodeB->appName, callback => $requestCallback );
         
         # Delayed request of a circuit

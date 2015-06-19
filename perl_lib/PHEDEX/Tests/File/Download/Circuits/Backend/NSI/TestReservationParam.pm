@@ -17,8 +17,6 @@ is($parameters->startTime->arg, "--st", "$msg: Start time argument was correctly
 is($parameters->startTime->value, "10 sec", "$msg: Start time value was correctly initialised");
 is($parameters->endTime->arg, "--et", "$msg: End time argument was correctly initialised");
 is($parameters->endTime->value, "30 min", "$msg: End time value was correctly initialised");
-is($parameters->gri->arg, "--g", "$msg: Gri argument was correctly initialised");
-is($parameters->gri->value, "PhEDEx-NSI", "$msg: Gri value was correctly initialised");
 is($parameters->sourceStp->arg, "--ss", "$msg: Source node argument was correctly initialised");
 is($parameters->sourceStp->value, "urn:ogf:network:somenetwork:somestp?vlan=333", "$msg: Source node value was correctly initialised");
 is($parameters->destinationStp->arg, "--ds", "$msg: Destination node argument was correctly initialised");

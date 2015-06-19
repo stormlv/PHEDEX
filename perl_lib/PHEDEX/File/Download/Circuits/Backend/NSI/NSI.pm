@@ -106,8 +106,9 @@ override 'backendRequestResource' => sub {
     my $path = $self->getPathBySiteNames($request->siteA, $request->siteB, $request->bidirectional);
 
     # Create the resource
-    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'NSI', resourceType  => 'Circuit', path => $path);
-
+    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'NSI', path => $path);
+    $resource->setStatus('Requesting', $request->bandwidth); 
+    
     # Add to pending sets
     $self->addToPending($resource);
 
@@ -117,13 +118,13 @@ override 'backendRequestResource' => sub {
 override 'backendUpdateResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
-    $self->queueThenExecuteAction(UPDATE, $resource);
+    $self->queueThenExecuteAction(UPDATE, $resource, $callback);
 };
 
 override 'backendTeardownResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
-    $self->queueThenExecuteAction(TEARDOWN, $resource);
+    $self->queueThenExecuteAction(TEARDOWN, $resource, $callback);
 };
 
 # Creates a new action based on the action type provided (Request, Teardown)
@@ -132,9 +133,9 @@ override 'backendTeardownResource' => sub {
 sub queueThenExecuteAction {
     # TODO: Check if this can't be replaced by a Moose trigger on the actionQueue attribute
     my ($self, $actionType, $resource, $requestCallback) = @_;
-
+    my $msg = 'NSI->queueThenExecuteAction';
     if (! PHEDEX::File::Download::Circuits::Helpers::Utils::Utils::checkArguments(@_)) {
-        $self->Logmsg("NSI->queueThenExecuteAction: Invalid parameters have been supplied");
+        $self->Logmsg("$msg: Invalid parameters have been supplied");
         return;
     }
 
@@ -144,6 +145,8 @@ sub queueThenExecuteAction {
                                                                              type => $actionType, 
                                                                              resource => $resource, 
                                                                              callback => $requestCallback);
+    
+    $self->Logmsg("$msg: Queuing newly received action (assigned id: $actionId");
 
     $self->queueAction($action);
     $self->executeNextAction();
@@ -155,7 +158,7 @@ sub executeNextAction {
     my $msg = "NSI->executeNextAction";
     
     if ($self->hasCurrentAction) {
-        $self->Logmsg("$msg: An action is already being executed. Next action queued will be executed after the current one finishes");
+        $self->Logmsg("$msg: Currently executing action '".$self->currentAction->type."' (actionId: ".$self->currentAction->id.")");
         return;
     }
 
@@ -172,7 +175,6 @@ sub executeNextAction {
         case REQUEST {
             # Create a reservation and add it to the currently executing action
             my $reservation = PHEDEX::File::Download::Circuits::Backend::NSI::Reservation->new();
-            $reservation->callback($action->callback);
             $reservation->updateParameters($action->resource);
             $action->reservation($reservation);
 
@@ -200,8 +202,6 @@ sub executeNextAction {
             }
 
             my $terminationCommands = $reservation->getTerminationScript();
-
-            $self->removeReservation($reservation->connectionId);
             $self->sendToCLI($terminationCommands);
         }
     }
@@ -234,9 +234,10 @@ sub terminateReservation {
     # Remove from the reservation list if it had been added
     $self->removeReservation($connectionId) if ($self->hasReservation($connectionId));
     # Inform the resource manager that the request failed
-    $reservation->callback->(undef, REQUEST_FAILED);
+    $self->currentAction->callback(undef, REQUEST_FAILED);
     # Remove from pending resources 
     $self->removeFromPending($reservation->resource);
+    $self->clearCurrentAction;
 }
 
 sub processToolOutput {
@@ -250,13 +251,10 @@ sub processToolOutput {
 
     switch ($eventName) {
         case 'handleTaskStdOut' {
-            $self->Logmsg("NSI CLI($pid): $output") if $self->verbose;
+#            $self->Logmsg("NSI CLI($pid): $output") if $self->verbose;
             
             my $connectionId = PHEDEX::File::Download::Circuits::Backend::NSI::StateMachine::isValidMessage($output);
-            if (! defined $connectionId) {
-#                $self->Logmsg("$msg: Not a transition message - ignoring") if $self->verbose;
-                return;
-            }
+            return if (! defined $connectionId);
 
             my $reservation;
             
@@ -268,6 +266,7 @@ sub processToolOutput {
                 if (! defined $self->currentAction->reservation->connectionId) {
                     $reservation = $self->currentAction->reservation;
                     $reservation->connectionId($connectionId);
+                    $self->currentAction->resource->physicalId($connectionId);
                 } else {
                     # Or we received a message about a reservation which we have no traces of
                     $self->Logmsg("Couldn't find any reservation matching this ID");
@@ -288,10 +287,13 @@ sub processToolOutput {
             $reservation->stateMachine->doTransition($transition);
 
             switch($reservation->stateMachine->currentState) {
+                # The reservation initially has no ConnectionID assigned to it
+                # The aggregator assigns one
                 case 'AssignedId' {
-                    $self->Logmsg("$msg: Circuit was assigned a connection id");
+                    $self->Logmsg("$msg: Circuit was assigned a connection id ($connectionId)");
                     $self->addReservation($connectionId, $reservation);
                 }
+                
                 # If the reservation was held, then commit it
                 case 'Confirmed' {
                     $self->Logmsg("$msg: Circuit was confirmed. Issuing commit next");
@@ -311,21 +313,35 @@ sub processToolOutput {
                 # Reservation is now active (dataplane should now work)
                 case 'Active' {
                     $self->Logmsg("$msg: Circuit is now active. Informing the resource manager");
-                    $reservation->callback->($reservation->resource, REQUEST_SUCCEEDED);
-                    $self->moveFromPendingToActive($reservation->resource);
+                    # Circuit is now active
+                    # - change status of the NetworkResource (handled by the ResourceManager) to "Online"
+                    # - inform the ResourceManager that the request succeeded
+                    # - backend needs to mark the NetworkResource as Active (from Pending)
+                    my $resource = $reservation->resource;
+                    $resource->setStatus("Online", $reservation->parameters->bandwidth, $reservation->connectionId);
+                    $self->currentAction->callback->($resource, REQUEST_SUCCEEDED); 
+                    $self->moveFromPendingToActive($resource);
+                    $self->clearCurrentAction;
                 }
 
                 # Reservation has been terminated
                 case 'Terminated' {
-                     $self->Logmsg("Circuit terminated");
-                     $reservation->removeReservation($connectionId);
-                     $reservation->callback->($reservation->resource, TERMINATE_SUCCEEDED);
-                     $self->removeFromActive($reservation->resource);
+                    $self->Logmsg("$msg: Circuit terminated");
+                    # Circuit is now offline
+                    # - change status of the NetworkResource (handled by the ResourceManager) to "Offline"
+                    # - inform the ResourceManager that the request succeeded and the resource is now offline
+                    # - backend needs to remove the NetworkResource from Active set
+                    my $resource = $reservation->resource;
+                    $resource->setStatus("Offline");
+                    $self->currentAction->callback->($resource, TERMINATE_SUCCEEDED);
+                    $self->removeReservation($reservation->connectionId);
+                    $self->removeFromActive($resource);
+                    $self->clearCurrentAction;
                 }
 
                 # The reservation failed for whatever reason
                 case ['Error', 'ConfirmFail', 'CommitFail', 'ProvisionFail'] {
-                    $self->Logmsg("Circuit creation failed");
+                    $self->Logmsg("$msg: Circuit failed");
                     $self->terminateReservation($reservation, $connectionId);
                 }
             }

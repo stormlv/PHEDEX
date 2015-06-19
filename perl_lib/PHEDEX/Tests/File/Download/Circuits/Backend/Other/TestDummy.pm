@@ -12,11 +12,6 @@ use PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
-#  $nodes[0] = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_Dev', netName => '137.138.42.16');
-#    $nodes[1] = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_0', netName => '188.184.134.192');
-#    $nodes[2] = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_1', netName => '128.142.135.112');
-#    $nodes[3] = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_2', netName => '127.0.0.1');
-
 sub setupSession {
     my $dummyBackend = shift;
     
@@ -40,17 +35,21 @@ sub setupSession {
         my $node1 = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_Dev', netName => '137.138.42.16');
         my $node2 = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(appName => 'T2_ANSE_CERN_0', netName => '188.184.134.192');
         my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $node1, nodeB => $node2, type => 'Layer2');
-        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'Dummy',
+        my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy',
                                                                                                resourceType    => 'Circuit',
                                                                                                path => $path);
     
         # Delayed request of a circuit
         $dummyBackend->timeSimulation(1);
         $kernel->call($session, 'backendRequestResource', $request);
+
         $dummyBackend->timeSimulation(-1);
         $kernel->call($session, 'backendRequestResource', $failedRequest);
+
         $dummyBackend->timeSimulation(1);
+        $dummyBackend->addToActive($resource);
         $kernel->call($session, 'backendUpdateResource', $resource, $testUpdateSuccess);
+
         $dummyBackend->timeSimulation(-1);
         $kernel->call($session, 'backendUpdateResource', $resource, $testUpdateFailure);
     };

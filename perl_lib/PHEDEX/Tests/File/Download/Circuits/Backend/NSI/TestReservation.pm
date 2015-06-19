@@ -6,7 +6,7 @@ use warnings;
 use base 'PHEDEX::Core::Logging';
 
 use PHEDEX::File::Download::Circuits::Backend::NSI::Reservation;
-use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 
@@ -18,7 +18,7 @@ my $nodeB = PHEDEX::File::Download::Circuits::ManagedResource::Core::Node->new(a
 my $path = PHEDEX::File::Download::Circuits::ManagedResource::Core::Path->new(nodeA => $nodeA, nodeB => $nodeB, type => 'Layer2');
 
 # Create the circuit and reservation, then update the reservation's parameters based on the provided circuit
-my $circuit = PHEDEX::File::Download::Circuits::ManagedResource::Circuit->new(backendType => 'Dummy', path => $path);
+my $circuit = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'Dummy', path => $path);
 my $reservation = PHEDEX::File::Download::Circuits::Backend::NSI::Reservation->new();
 $reservation->updateParameters($circuit);
 
@@ -31,7 +31,7 @@ foreach my $line (@{$reservationScript}) { $scriptHash->{$line} = 1; }
 ok($scriptHash->{'resv set --bw "1000"'."\n"}, "BW correctly set");
 ok($scriptHash->{'resv set --ss "STP1"'."\n"}, "Node 1 correctly set");
 ok($scriptHash->{'resv set --ds "STP2"'."\n"}, "Node 2 correctly set");
-ok($scriptHash->{'resv set --et "21600 sec"'."\n"}, "Lifetime correctly set");
+ok($scriptHash->{'resv set --et "6 hours"'."\n"}, "Lifetime correctly set");
 ok($scriptHash->{'resv set --st "10 sec"'."\n"}, "Start time correctly set");
 
 # Check the getTermination script method

@@ -18,7 +18,7 @@ use constant TRANSITIONS => ["Submitted reserve, new connectionId = ".CONNECTION
                              "Received provisionConfirmed for connectionId: ".CONNECTION_ID_REGEX,
                              "Received provisionFailed for connectionId: ".CONNECTION_ID_REGEX,
                              "Received dataPlaneStateChange for connectionId: ".CONNECTION_ID_REGEX,
-                             "Received terminationConfirmed for connectionId: ".CONNECTION_ID_REGEX,
+                             "Received terminateConfirmed for connectionId: ".CONNECTION_ID_REGEX,
                              "Received an errorEvent for connectionId: ".CONNECTION_ID_REGEX];
 
 use constant {

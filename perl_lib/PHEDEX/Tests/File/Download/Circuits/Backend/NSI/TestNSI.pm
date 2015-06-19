@@ -34,6 +34,7 @@ sub setupSession {
 
     $states->{requestCallback} = \&requestCallback;
     $states->{terminateCallback} = \&terminateCallback;
+
     my $session = POE::Session->create(inline_states => $states);
 
     return $session;
@@ -45,16 +46,18 @@ sub requestCallback {
     my $status = $arguments->[1];
 
     is($status, REQUEST_SUCCEEDED, "TestCore->requestCallback: Request succeeded");
-
-    my $terminateCallback = $session->postback("terminateCallback");
-    $kernel->delay('backendTeardownResource' => 10, $resource, $terminateCallback);
+    
+    if ($status eq REQUEST_SUCCEEDED) {
+        my $terminateCallback = $session->postback("terminateCallback");
+        $kernel->delay('backendTeardownResource' => 60, $resource, $terminateCallback);
+    }
 }
 
 sub terminateCallback {
-        my ($kernel, $session, $arguments) = @_[KERNEL, SESSION, ARG1];
+    my ($kernel, $session, $arguments) = @_[KERNEL, SESSION, ARG1];
     my $resource = $arguments->[0];
     my $status = $arguments->[1];
-    is($status, TERMINATE_SUCCEEDED, "TestCore->terminateCallback: Request succeeded");
+    is($status, TERMINATE_SUCCEEDED, "TestCore->terminateCallback: terminate succeeded");
 }
 
 sub testPOEStuff {

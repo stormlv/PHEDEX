@@ -12,7 +12,7 @@ use PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
-has 'timeSimulation'    => (is  => 'rw', isa => 'Int', default => 5);                   # Simulates the time (in seconds) delay to get a reply from the backend
+has 'timeSimulation'    => (is  => 'rw', isa => 'Num', default => 5);                   # Simulates the time (in seconds) delay to get a reply from the backend
 
 sub BUILD {
     my $self = shift;
@@ -46,15 +46,15 @@ override 'backendRequestResource' => sub {
     my $msg = "Dummy->backendRequestResource";
 
     my $path = $self->getPathBySiteNames($request->siteA, $request->siteB, $request->bidirectional);
-    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendType => 'NSI', resourceType  => 'Circuit', path => $path);
+    my $resource = PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource->new(backendName => 'NSI', resourceType  => 'Circuit', path => $path);
     
     if ($self->timeSimulation >= 0) {
         $self->Logmsg("$msg: Dummy resource created for path ".$path->getName." with a BW of ".$resource->bandwidthRequested());
         $self->addToActive($resource);
-        $kernel->delay_add('delayedAction', $self->timeSimulation, $resource, $request->callback, REQUEST_SUCCEEDED);
+        $kernel->delay_add('delayedAction' => $self->timeSimulation, $resource, $request->callback, REQUEST_SUCCEEDED);
     } else {
         $self->Logmsg("$msg: Dummy resource creation failed for path ".$path);
-        $kernel->delay_add('delayedAction', -$self->timeSimulation, $resource, $request->callback, REQUEST_FAILED);
+        $kernel->delay_add('delayedAction' => -$self->timeSimulation, $resource, $request->callback, REQUEST_FAILED);
     }
 };
 
@@ -64,9 +64,9 @@ override 'backendUpdateResource' => sub {
     my $msg = "Dummy->backendUpdateResource";
     $self->Logmsg("$msg: Updating resource");
     if ($self->timeSimulation >= 0) {
-        $kernel->delay_add('delayedAction', $self->timeSimulation, $resource, $callback, UPDATE_SUCCEEDED);
+        $kernel->delay_add('delayedAction' => $self->timeSimulation, $resource, $callback, UPDATE_SUCCEEDED);
     } else {
-        $kernel->delay_add('delayedAction', -$self->timeSimulation, $resource, $callback, UPDATE_FAILED);
+        $kernel->delay_add('delayedAction' => -$self->timeSimulation, $resource, $callback, UPDATE_FAILED);
     }
 };
 

@@ -7,14 +7,13 @@ use base 'PHEDEX::Core::Logging';
 use PHEDEX::File::Download::Circuits::Backend::NSI::ReservationParam;
 use PHEDEX::File::Download::Circuits::Backend::NSI::StateMachine;
 use PHEDEX::File::Download::Circuits::Backend::NSI::StateMachineTransition;
-use PHEDEX::File::Download::Circuits::ManagedResource::Circuit;
+use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
 use Moose::Util::TypeConstraints;
     subtype 'ConnectionId', as 'Str', where { my $regex = CONNECTION_ID_REGEX(); $_ =~ /$regex/ }, message { "The value you provided is not a valid connection id"};
 no Moose::Util::TypeConstraints;
 
 has 'resource'      => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource');
-has 'callback'      => (is  => 'rw', isa => 'Ref');
 has 'connectionId'  => (is  => 'rw', isa => 'ConnectionId');
 has 'parameters'    => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Backend::NSI::ReservationParam', 
                                      default => sub { PHEDEX::File::Download::Circuits::Backend::NSI::ReservationParam->new() });
