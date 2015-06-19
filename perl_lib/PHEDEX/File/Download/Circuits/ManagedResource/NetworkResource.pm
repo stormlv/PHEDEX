@@ -183,13 +183,12 @@ sub saveState {
 
     # Check if state folder existed and attempt to create if it didn't
     my $location = defined $overrideLocation ? $overrideLocation : $self->getSaveLocation();
-    if (!-d $location) {
-        File::Path::make_path($location, {error => \my $err});
-        if (@$err) {
-            $self->Logmsg("$msg: State folder did not exist and we were unable to create it");
-            return ERROR_PATH_INVALID;
-        }
-    }
+    
+    my $result = &validateLocation($location);
+    if ($result != OK) {
+        $self->Logmsg("$msg: Cannot validate location");
+        return $result;
+    };
     
     # Attempt to save the object
     my $fullPath = $location."/".$self->getSaveFilename();

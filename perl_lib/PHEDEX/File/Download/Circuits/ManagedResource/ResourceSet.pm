@@ -1,14 +1,25 @@
 package PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet;
 
 use Moose;
+use MooseX::Storage;
 
-has 'resources'             => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource]',      # {NetworkResource.ID => NetworkResource}
-                                traits  => ['Hash'], 
-                                handles => {countResources  => 'count',
-                                            isEmpty         => 'is_empty',
-                                            getAllResources => 'values'});
+with Storage('format' => 'YAML', 'io' => 'File');
 
-has 'maxResources' => (is  => 'rw', isa => 'Int', required => 1);
+use Data::UUID;
+
+use PHEDEX::File::Download::Circuits::Common::Constants;
+use PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
+
+
+has 'id'            => (is  => 'ro', isa => 'Str', 
+                        default => sub { my $ug = new Data::UUID; $ug->to_string($ug->create()); });
+has 'resources'     => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource]',      # {NetworkResource.ID => NetworkResource}
+                        traits  => ['Hash'], 
+                        handles => {countResources  => 'count',
+                                    isEmpty         => 'is_empty',
+                                    getAllResources => 'values'});
+has 'maxResources'  => (is  => 'rw', isa => 'Int', required => 1);
+has 'stateDir'      => (is  => 'rw', isa => 'Str', default => '/tmp/resources');
 
 sub resourceExists {
     my ($self, $resource) = @_;
@@ -72,6 +83,23 @@ sub getResourceByBW {
         }
     }
     return $maxResource;
+}
+
+# Saves the set
+sub saveState { 
+    my ($self, $overrideLocation) = @_;
+    my $msg = 'ResourceSet->saveState';
+
+    # Check if state folder existed and attempt to create if it didn't
+    my $location = defined $overrideLocation ? $overrideLocation : $self->stateDir;
+ 
+    my $result = &validateLocation($location);
+    if ($result != OK) {
+        $self->Logmsg("$msg: Cannot validate location");
+        return $result;
+    };
+    
+    $self->store($location."/".$self->id.".set");
 }
 
 1;

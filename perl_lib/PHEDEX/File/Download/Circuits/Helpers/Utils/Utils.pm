@@ -2,19 +2,20 @@ package PHEDEX::File::Download::Circuits::Helpers::Utils::Utils;
 
 use strict;
 use warnings;
-
-use Scalar::Util qw(blessed);
-
+ 
+use PHEDEX::File::Download::Circuits::Common::Constants;
 use PHEDEX::File::Download::Circuits::Helpers::Utils::UtilsConstants;
+
 use POSIX qw(strftime);
 use Time::HiRes 'gettimeofday';
+use Scalar::Util qw(blessed);
 
 use base 'Exporter';
 our @EXPORT = qw(
                 compareObject
                 checkPort determineAddressType replaceHostnameInURL
                 getPath getFormattedTime
-                checkArguments
+                checkArguments validateLocation
                 mytimeofday
                 );
 
@@ -153,6 +154,21 @@ sub checkArguments {
         return undef if (! defined $arg);
     }
     return 1;
+}
+
+# Checks if the location exists and we can write to it
+# If the location doesn't exist, it attempts to create it
+sub validateLocation {
+    my $location = shift;
+
+    # Check if the location exists and create it if not
+    if (! -d $location) {
+        File::Path::make_path($location, {error => \my $err});
+        return ERROR_PATH_INVALID if @$err;
+    }
+
+    # Check if we can write to that location
+    return -w $location ? OK : ERROR_PATH_INVALID;
 }
 
 # High-resolution timing (copied from PhEDEx::Timing to avoid inclusion of PhEDEx packages)
