@@ -1,3 +1,14 @@
+=head1 NAME
+
+Backend::Core::ResourceRequest - Object used to pass parameters when requesting a resource to the backend
+
+=head1 DESCRIPTION
+
+When constructing it, it requires at least the site names between which the 
+circuit will be created, and the callback handle which will be invoked
+once there is a status update for the request (either fail or success)
+
+=cut
 package PHEDEX::File::Download::Circuits::Backend::Core::ResourceRequest;
 
 use Moose;
