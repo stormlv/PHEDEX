@@ -69,7 +69,7 @@ sub testSerialization {
     my $openedSet = PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet->load("/tmp/vlad/".$set->id.".set");
     ok($openedSet, "$msg: Successfully opened set");
 
-    foreach my $resourceId (values %{$resourceHash}) {
+    foreach my $resourceId (keys %{$resourceHash}) {
         my $openedResource = $openedSet->getResource($resourceId);
         my $originalResource = $set->getResource($resourceId);
         ok($openedResource, "$msg: Resource exists in opened set");
