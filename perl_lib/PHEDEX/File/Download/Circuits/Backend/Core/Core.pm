@@ -1,3 +1,13 @@
+=head1 NAME
+
+Backend::Core::Core - Base class for all circuit backends
+
+=head1 DESCRIPTION
+
+This class should not be instantiated on its own... It's only the base class for the circuit backends.
+
+=cut
+
 package PHEDEX::File::Download::Circuits::Backend::Core::Core;
 
 use Moose;
@@ -13,7 +23,6 @@ use PHEDEX::File::Download::Circuits::Common::EnumDefinitions;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet;
 
-## Define the constants specific to Backend::Core ##
 our @EXPORT = qw(
                 REQUEST_SUCCEEDED UPDATE_SUCCEEDED TERMINATE_SUCCEEDED
                 REQUEST_FAILED UPDATE_FAILED TERMINATE_FAILED
@@ -28,10 +37,25 @@ use constant {
     TERMINATE_FAILED        =>          -3,
 };
 
-################## Define the Moose class attributes ##################
+=head1 ATTRIBUTES
+
+=over
+ 
+=item C<id>
+
+Randomly generated ID
+
+=cut 
 has 'id'                    => (is  => 'ro', isa => 'Str', default => sub { my $ug = new Data::UUID; $ug->to_string($ug->create()) });
 
-# These are the paths on which this backend can create circuits (# of Path.name => Path)
+=item C<availablePaths>
+
+It's a Moose hash of Path objects, taking the Path.name attribute as key.
+It holds the paths on which the backend can request the creation of circuits.
+
+The Moose system provides several helper methods: I<addPath>, I<getPath>, I<getPaths>, I<pathExists>, <deletePath>
+
+=cut
 has 'availablePaths'        => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::ManagedResource::Core::Path]',
                                 traits  => ['Hash'], 
                                 handles => {addPath     => 'set',
@@ -40,7 +64,16 @@ has 'availablePaths'        => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Downl
                                             pathExists  => 'exists',
                                             deletePath  => 'delete'});
 
-# Hash of all reasources which are currently online (active circuits) (# of LinkID => ResourcesSet)
+=item C<activeResources>
+
+It's a Moose hash of ResourceSet objects, taking the Path.Name attribute as key. It holds all the resources 
+which are currently active. These resources are grouped into sets, since for a single path we allow more 
+than one circuit to be created.
+
+The Moose system provides several helper methods: I<addActiveSet>, I<getActiveSet>, 
+I<getActiveSets>, I<activeSetExists>, I<deleteActiveSet>
+
+=cut
 has 'activeResources'       => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet]',
                                 traits  => ['Hash'], 
                                 handles => {addActiveSet    => 'set', 
@@ -49,7 +82,16 @@ has 'activeResources'       => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Downl
                                             activeSetExists => 'exists',
                                             deleteActiveSet => 'delete'});
 
-# Hash of all resources that are pending (pending requests) (# of LinkID => ResourcesSet)
+=item C<pendingResources>
+
+It's a Moose hash of ResourceSet objects, taking the Path.Name attribute as key. It holds all the resources 
+which are currently pending. These resources are grouped into sets, since for a single path we allow more 
+than one circuit to be created.
+
+The Moose system provides several helper methods: I<addPendingSet>, I<getPendingSet>, 
+I<getPendingSets>, I<pendingSetExists>, I<deletePendingSet>
+
+=cut
 has 'pendingResources'       => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::ManagedResource::ResourceSet]',
                                  traits  => ['Hash'], 
                                  handles => {addPendingSet      => 'set', 
@@ -57,11 +99,34 @@ has 'pendingResources'       => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Down
                                              getPendingSets     => 'values',
                                              pendingSetExists   => 'exists',
                                              deletePendingSet   => 'delete'});
+                                             
+=item C<stateDir>
 
+Folder in which the object will be serialized
+
+=cut
+has 'stateDir'      => (is  => 'rw', isa => 'Str', default => 10);
+
+=item C<maxResources>
+
+Maximum number of concurrent circuit per each path
+
+=back
+
+=cut
 has 'maxResources'  => (is  => 'rw', isa => 'Int', default => 10);
 has 'verbose'       => (is  => 'rw', isa => 'Bool', default => 0);
 
-# Initialize all POE events specifically related to circuits
+=head1 METHODS
+
+=over
+ 
+=item C<_poe_init>
+
+Initialize all POE events specifically related to circuits
+
+=cut
+
 sub _poe_init {
     my ($self, $kernel, $session) = @_;
     # Declare events which are going to be used by the ResourceManager
@@ -69,10 +134,23 @@ sub _poe_init {
     $kernel->state($_, $self) foreach @poe_subs;
 }
 
+=item C<moveFromPendingToActive>
+
+Moves a resource from the pending set to the active set
+
+=cut
+
 sub moveFromPendingToActive {
     my ($self, $resource) = @_;
     $self->addToActive($self->removeFromPending($resource));
 }
+
+=item C<addToPending>
+
+Adds a resource to the pending set. Creates a new set if none existed for a given path. 
+Returns the added resource if there were no errors
+
+=cut
 
 sub addToPending {
     my ($self, $resource) = @_;
@@ -85,6 +163,11 @@ sub addToPending {
     return $pendingSet->addResource($resource);
 }
 
+=item C<removeFromPending>
+
+Removes a resource from the pending set. Returns the removed resource if there were no errors
+
+=cut
 sub removeFromPending {
     my ($self, $resource) = @_;
     return undef if ! defined $resource;
@@ -93,6 +176,12 @@ sub removeFromPending {
     return $pendingSet->deleteResource($resource);
 }
 
+=item C<addToActive>
+
+Adds a resource to the active set. Creates a new set if none existed for a given path. 
+Returns the added resource if there were no errors
+
+=cut
 sub addToActive {
     my ($self, $resource) = @_;
     return undef if ! defined $resource;
@@ -105,6 +194,11 @@ sub addToActive {
     return $activeSet->addResource($resource);
 }
 
+=item C<removeFromActive>
+
+Removes a resource from the active set. Returns the removed resource if there were no errors
+
+=cut
 sub removeFromActive {
     my ($self, $resource) = @_;
     return undef if ! defined $resource;
@@ -113,6 +207,12 @@ sub removeFromActive {
     return $activeSet->deleteResource($resource);
 }
 
+=item C<getPathBySiteNames>
+
+Takes in two site names (SiteA, SiteB)and a boolean (Bidirectional), and attempts to retrieve a 
+Path object from the "availablePaths" attribute
+
+=cut
 sub getPathBySiteNames {
     my ($self, $siteA, $siteB, $bidirectional) = @_;
     my $pathName = PHEDEX::File::Download::Circuits::Helpers::Utils::Utils::getPath($siteA, $siteB, $bidirectional);
@@ -120,6 +220,14 @@ sub getPathBySiteNames {
     return $path;
 }
 
+=item C<canRequestResource>
+
+Returns 1 if a new circuit request can be made of the specified path, or undef otherwise. Takes in a ResourceRequest object.
+Checks if
+- the path requested allows for circuits
+- if we haven't exceeded the number of maximum circuits on that path (either active or pending)
+
+=cut
 sub canRequestResource {
     my ($self, $resourceRequest) = @_;
 
@@ -166,6 +274,11 @@ sub canRequestResource {
     return 1;
 }
 
+=item C<hasResource>
+
+Returns 1 if the provided resource is in an active set.
+
+=cut
 sub hasResource {
     my ($self, $resource) = @_;
     my $msg = "Core->hasResource"; 
@@ -185,7 +298,11 @@ sub hasResource {
     return 1;
 }
 
-# Does the initial leg work for a resource request
+=item C<backendRequestResource>
+
+Does the initial leg work for a resource request. Will be called by the extending class 
+
+=cut
 sub backendRequestResource {
     my ($self, $kernel, $session, $resourceRequest) = @_[ OBJECT, KERNEL, SESSION, ARG0];
     my $msg = "Core->backendRequestResource";
@@ -204,7 +321,11 @@ sub backendRequestResource {
     }
 }
 
-# Does the initial leg work for a resource update
+=item C<backendUpdateResource>
+
+Does the initial leg work for a resource update. Will be called by the extending class 
+
+=cut
 sub backendUpdateResource {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     my $msg = "Core->backendUpdateResource";
@@ -222,7 +343,13 @@ sub backendUpdateResource {
     }
 }
 
-# Does the initial leg work for a resource teardown
+=item C<backendUpdateResource>
+
+Does the initial leg work for a resource teardown. Will be called by the extending class 
+
+=back
+
+=cut
 sub backendTeardownResource {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     my $msg = "Core->backendTeardownResource";
