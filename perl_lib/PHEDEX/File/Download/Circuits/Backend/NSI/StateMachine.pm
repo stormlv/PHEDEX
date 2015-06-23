@@ -1,3 +1,23 @@
+=head1 NAME
+
+Backend::NSI::StateMachine - Definition of the state machine for NSI
+
+=head1 DESCRIPTION
+
+This class represents (my version of) the complete description of the NSI state machine.
+
+It deviates from the NSI CS definition of the system state machine. NSI uses three separate
+state machines to remember the different states that the system is in: Reservation state machine (RSM), 
+Provision state machine (PSM) and the Lifecycle state machine (LSM). Moreover the RSM and PSM don't
+have definite end states and are able to cycle through the states.
+
+I personally found this to be a bit unnecessary and complex so I came up with a "combined" state machine.
+
+This class is a bit NSI specific, but with little effort it should be possible to make a generic on
+for any state machine. 
+
+=cut
+
 package PHEDEX::File::Download::Circuits::Backend::NSI::StateMachine;
 
 use Moose;
@@ -39,12 +59,37 @@ use Moose::Util::TypeConstraints;
     enum 'StateMachineStates',  NSI_STATES;
 no Moose::Util::TypeConstraints;
 
+
+=head1 ATTRIBUTES
+
+=over
+ 
+=item C<currentState>
+
+An attribute holds the current state of the state machine. This is an enum, with 
+the following possible states (Created AssignedId Confirmed Commited Provisioned 
+Active Terminated Error ConfirmFail CommitFail ProvisionFail)
+
+A trigger is linked to the change of this attribute, which updates the isInTerminalState
+attribute as well.
+
+=cut 
 has 'currentState'      => (is  => 'rw', isa => 'StateMachineStates', default => 'Created', 
                             trigger => sub { 
                                             my ($self, $object, $objectOld) = @_;
                                             my $transition = $self->getTransition($objectOld."-to-".$object);
                                             $self->isInTerminalState($transition->isTerminal);
                             });
+
+=item C<transitions>
+
+Moose hash of StateMachineTransition objects. This hash holds all of the possible transitions
+that apply to the NSI state machine.
+
+The Moose system provides several helper methods: I<addTransition>, I<getTransition>, 
+I<hasTransition>, I<getAllTransitionIDs>, I<getAllTransitions>
+
+=cut 
 has 'transitions'       => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Circuits::Backend::NSI::StateMachineTransition]',
                             traits  => ['Hash'], 
                             handles => {addTransition       => 'set',
@@ -52,10 +97,27 @@ has 'transitions'       => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download:
                                         hasTransition       => 'exists',
                                         getAllTransitionIDs => 'keys',
                                         getAllTransitions   => 'values'});
+                                        
+=item C<isInTerminalState>
+
+Boolean storing whether or not the state machine is in a terminal state or not
+
+=back
+
+=cut 
 has 'isInTerminalState' => (is  => 'rw', isa => 'Bool', default => '0');
 has 'verbose'           => (is  => 'rw', isa => 'Bool', default => '0');
 
-# Static method
+=head1 METHODS
+
+=over
+ 
+=item C<isValidMessage>
+
+Static method. Check if the message provided is valid or not (i.e. matches any regex in 
+the available transition list) and returns the connection ID extracted if the regex matches
+
+=cut
 sub isValidMessage {
     my $message = shift;
     foreach my $transition (@{TRANSITIONS()}) {
@@ -68,6 +130,11 @@ sub isValidMessage {
     return undef;
 }
 
+=item C<BUILD>
+
+After creating the object, all of the possible transitions are assigned.
+
+=cut
 sub BUILD {
     my $self = shift;
     
@@ -119,12 +186,17 @@ sub BUILD {
     }
 }
 
-# Try to identify a transition from the current state based on the message provided
-# It looks to all transitions defined in the state machine and attempts to find one
-# for which the message matches the transition required regex. If this is found
-# it verifies that this is a valid transition from the current state of the state machine
-# If it is, it return the connection ID (extracted from the message) and transition 
-# which was previously identified
+
+=item C<identifyNextTransition>
+
+Try to identify a transition from the current state based on the message provided.
+It looks to all transitions defined in the state machine and attempts to find one
+ for which the message matches the transition required regex. 
+If this is found it verifies that this is a valid transition from the current 
+state of the state machine. If it is, it returns the connection ID (extracted 
+from the message) and transition which was previously identified
+
+=cut
 sub identifyNextTransition {
     my ($self, $message) = @_;
     my $msg = "StateMachine->identifyNextTransition";
@@ -143,7 +215,13 @@ sub identifyNextTransition {
     return undef;
 }
 
-# Try to set the next state based on a given transition
+=item C<doTransition>
+
+Try to set the next state based on a given transition
+
+=back
+
+=cut 
 sub doTransition {
     my ($self, $transition) = @_;
     my $msg = "StateMachine->doTransition";

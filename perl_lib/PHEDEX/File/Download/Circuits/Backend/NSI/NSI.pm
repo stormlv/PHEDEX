@@ -1,3 +1,17 @@
+=head1 NAME
+
+NSI::NSI - NSI backend
+
+=head1 DESCRIPTION
+
+This is the NSI backend, which extends the Core::Core class.
+It uses the NSI CLI to issue commands to an NSI aggregator.
+Currently, it can request and terminate circuits. The update reservation 
+function hasn't been implemented yet since the update doesn't seem to be
+working in the NSI CLI properly.s
+
+=cut
+
 package PHEDEX::File::Download::Circuits::Backend::NSI::NSI;
 
 use Moose;
@@ -25,23 +39,81 @@ use constant {
     TEARDOWN    => "Teardown",
 };
 
+=head1 ATTRIBUTES
+
+=over
+ 
+=item C<taskManager>
+
+In general, the task manager executes external commands.
+Here, it calls the NSI CLI and forwards inputs that were passed to it by the backend.
+All output for this thread is redirected to the "processToolOutput" method. 
+
+=cut 
 has 'taskManager'       => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager', default => sub { PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager->new() });
+
+=item C<actionHandler>
+
+Is the postback to the processToolOutput method. It is called by the task manager 
+on each output to the StdOut/Err of the NSI CLI
+
+=cut 
 has 'actionHandler'     => (is  => 'rw', isa => 'Ref');
+
+=item C<timeout>
+
+Timeout used for the task manager
+
+=cut 
 has 'timeout'           => (is  => 'rw', isa => 'Int', default => 120);
+
+=item C<actionQueue>
+
+Moose array of Backend::NSI::Action objects. It's used as a queue for the actions 
+to be performed by the backend.
+
+The Moose system provides several helper methods: I<queueAction>, I<dequeueAction> and I<actionQueueSize>
+
+=cut 
 has 'actionQueue'       => (is  => 'rw', isa => 'ArrayRef[PHEDEX::File::Download::Circuits::Backend::NSI::Action]', 
                             traits => ['Array'],
                             handles => {queueAction     => 'push', 
                                         dequeueAction   => 'shift', 
                                         actionQueueSize => 'count'});
+
+=item C<currentAction>
+
+Retains the current action that is being done.
+
+When doing typing ('isa') in Moose, you're not allowed to set the value to undef by hand.
+This is why a I<clearer> is provided I<clearCurrentAction> to set it to undef.
+
+The predicate hasCurrentAction returns if currentAction is set.
+
+=cut
 has 'currentAction'     => (is  => 'rw', isa => 'PHEDEX::File::Download::Circuits::Backend::NSI::Action',
                             clearer     => 'clearCurrentAction',
                             predicate   => 'hasCurrentAction');
+                            
+=item C<reservations>
+
+Moose hash of Backend::NSI::Reservation objects. It holds all the active reservations for this backend.
+
+The Moose system provides several helper methods: I<addReservation>, I<getReservation>,  I<removeReservation> and I<hasReservation>
+
+=cut 
 has 'reservations'      => (is  => 'rw', isa => 'HashRef[PHEDEX::File::Download::Circuits::Backend::NSI::Reservation]', 
                             traits => ['Hash'],  
                             handles => {addReservation      => 'set',
                                         getReservation      => 'get',
                                         removeReservation   => 'delete',
                                         hasReservation      => 'exists'});
+=item C<nsiToolLocation> C<nsiTool> C<nsiToolJavaFlags> C<nsiToolPid> C<command> 
+
+The different parameters needed to run the NSI CLI. Command is a concatenation of the previous attributes.
+PID is given after the taskmanager runs the command
+
+=cut 
 has 'nsiToolLocation'   => (is  => 'rw', isa => 'Str', default => '/data/NSI/CLI');
 has 'nsiTool'           => (is  => 'rw', isa => 'Str', default => 'nsi-cli-1.2.1-one-jar.jar');
 has 'nsiToolJavaFlags'  => (is  => 'rw', isa => 'Str', default =>   '-Xmx256m -Djava.net.preferIPv4Stack=true '.
@@ -50,8 +122,32 @@ has 'nsiToolJavaFlags'  => (is  => 'rw', isa => 'Str', default =>   '-Xmx256m -D
                                                                     '-Dorg.apache.cxf.JDKBugHacks.defaultUsesCaches=true ');
 has 'nsiToolPid'        => (is  => 'rw', isa => 'Int');
 has 'command'           => (is  => 'rw', isa => 'Str');
-has 'defaultProvider'   => (is  => 'rw', isa => 'Str', default => 'provider.script');   # Provider should also have the truststore containing the aggregator server certificats (store password is in: provider-client-https-cc.xml)
-has 'defaultRequester'  => (is  => 'rw', isa => 'Str', default => 'requester.script');  # Requester should also provide the truststore with his certificate and key (store and key password are in: requester-server-http.xml)
+
+=item C<defaultProvider>
+
+This is the script used to configure the provider (aggregator)
+
+It should also have the truststore containing the aggregator server certificats (store password is in: provider-client-https-cc.xml)
+
+=cut 
+has 'defaultProvider'   => (is  => 'rw', isa => 'Str', default => 'provider.script');
+
+=item C<defaultRequester>
+
+This is the script used to configure the requester (this machine)
+
+It should also provide the truststore with his certificate and key (store and key password are in: requester-server-http.xml)
+
+=cut 
+has 'defaultRequester'  => (is  => 'rw', isa => 'Str', default => 'requester.script');  #
+
+=item C<session>
+
+Reference to the PhEDEx session
+
+=back
+
+=cut
 has 'session'           => (is  => 'rw', isa => 'Ref');
 has 'uuid'              => (is  => 'rw', isa => 'Data::UUID', default => sub {new Data::UUID});
 has 'verbose'           => (is  => 'rw', isa => 'Int', default => 0);
@@ -62,9 +158,23 @@ sub BUILD {
     $self->taskManager->verbose($self->verbose);
 }
 
-# Init POE events
-# - declare event 'processToolOutput' which is passed as a postback to External
-# - call super
+=head1 METHODS
+
+=over
+ 
+=item C<_poe_init>
+
+Init POE events
+ 
+ - declare event 'processToolOutput' which is passed as a postback to the task manager
+ 
+ - call super
+ 
+ - launch the NSI CLI
+
+=cut
+
+
 override '_poe_init' => sub {
     my ($self, $kernel, $session) = @_;
 
@@ -80,7 +190,14 @@ override '_poe_init' => sub {
     $self->nsiToolPid($self->taskManager->startCommand($self->command, $self->actionHandler, $self->timeout));
 };
 
-sub getRequestScript {
+=item C<getSetupScript>
+
+Returns the NSI CLI script to set up the provider and requester.
+
+Use only if you work with different providers/requesters at the same time
+
+=cut
+sub getSetupScript {
     my ($self, $providerName, $requesterName, $scriptName) = @_;
     
     $providerName = $self->defaultProvider if ! defined $providerName;
@@ -97,6 +214,12 @@ sub getRequestScript {
     return $script;
 }
 
+=item C<backendRequestResource>
+
+Extended method from Core::Core. Takes a request object, creates the NetworkResource, adds it to the
+pending set, after which it queues the REQUEST action
+
+=cut
 override 'backendRequestResource' => sub {
     my ($self, $kernel, $session, $request) = @_[ OBJECT, KERNEL, SESSION, ARG0];
 
@@ -115,21 +238,35 @@ override 'backendRequestResource' => sub {
     $self->queueThenExecuteAction(REQUEST, $resource, $request->callback);
 };
 
+=item C<backendUpdateResource>
+
+Extended method from Core::Core. Queues an UPDATE action, although that's tot fully implemented yet
+
+=cut
 override 'backendUpdateResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
     $self->queueThenExecuteAction(UPDATE, $resource, $callback);
 };
 
+=item C<backendTeardownResource>
+
+Extended method from Core::Core. Queues an TEARDOWN action
+
+=cut
 override 'backendTeardownResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
     $self->queueThenExecuteAction(TEARDOWN, $resource, $callback);
 };
 
-# Creates a new action based on the action type provided (Request, Teardown)
-# This action is queued and will be executed after the rest of the pending actions have been completed
-# This restriction is due to us using the NSI CLI tool instead of having a native implementation
+=item C<queueThenExecuteAction>
+
+Creates a new action based on the action type provided (Request, Teardown).
+This action is queued and will be executed after the rest of the pending actions have been completed.
+This restriction is due to us using the NSI CLI tool instead of having a native implementation
+
+=cut
 sub queueThenExecuteAction {
     # TODO: Check if this can't be replaced by a Moose trigger on the actionQueue attribute
     my ($self, $actionType, $resource, $requestCallback) = @_;
@@ -139,19 +276,21 @@ sub queueThenExecuteAction {
         return;
     }
 
-    my $actionId = $self->uuid->to_string($self->uuid->create());
-
-    my $action = PHEDEX::File::Download::Circuits::Backend::NSI::Action->new(id => $actionId, 
-                                                                             type => $actionType, 
+    my $action = PHEDEX::File::Download::Circuits::Backend::NSI::Action->new(type => $actionType, 
                                                                              resource => $resource, 
                                                                              callback => $requestCallback);
     
-    $self->Logmsg("$msg: Queuing newly received action (assigned id: $actionId");
+    $self->Logmsg("$msg: Queuing newly received action (assigned id:".$action->id.")");
 
     $self->queueAction($action);
     $self->executeNextAction();
 }
 
+=item C<executeNextAction>
+
+Takes the next action in the queue and executes it if there are no other current actions taking place ATM.
+
+=cut
 # Executes the next action in the queue if there's no other pending action
 sub executeNextAction {
     my $self = shift;
@@ -209,7 +348,11 @@ sub executeNextAction {
     $self->executeNextAction();
 }
 
-# Send commands to the NSI CLI
+=item C<sendToCLI>
+
+Send a given script to the NSI CLI
+
+=cut
 sub sendToCLI {
     my ($self, $script) = @_;
     
@@ -226,6 +369,14 @@ sub sendToCLI {
     }
 }
 
+=item C<terminateReservation>
+
+Terminates a reservation request in case of issues.
+
+Sends terminate script to the CLI, removes the reservation from the hash, calls back to the 
+ResourceManager to inform of a request failure, removes NetworkResource from pending and clears the current action
+
+=cut
 sub terminateReservation {
     my ($self, $reservation, $connectionId) = @_;
 
@@ -240,6 +391,16 @@ sub terminateReservation {
     $self->clearCurrentAction;
 }
 
+=item C<processToolOutput>
+
+This method is called at each line out from STDOUT/ERR.
+
+It contains all the logic needed to parse the various steps in a reservation process: AssignedId,
+Confirmed, Commited, Active, Terminated.
+
+=back
+
+=cut
 sub processToolOutput {
     my ($self, $kernel, $session, $arguments) = @_[OBJECT, KERNEL, SESSION, ARG1];
     my $msg = "NSI->processToolOutput";
