@@ -1,3 +1,13 @@
+=head1 NAME
+
+Helpers::HTTP::HttpServer - Spawns an HTTP Server
+
+=head1 DESCRIPTION
+
+This helper class spawns a simple HTTP Server. It replies with JSON object for GET requests
+and can handle JSON encoded and FORM data in POST.
+
+=cut
 package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpServer;
 
 use Moose;
@@ -22,11 +32,30 @@ use Moose::Util::TypeConstraints;
     subtype 'Port', as 'Int', where {&checkPort($_) ne PORT_INVALID}, message { "The value you provided is not a valid port"};
 no Moose::Util::TypeConstraints;
 
+=head1 ATTRIBUTES
+
+=over
+ 
+=item C<alias> C<hostname> C<port> C<replyTimeout>
+
+Default configuration parameters for this server
+
+=cut 
 has 'alias'         => (is  => 'rw', isa => 'Str',      default => 'rmHttpServer');
 has 'hostname'      => (is  => 'rw', isa => 'IP',       default => 'vlad-vm-slc6.cern.ch');
 has 'port'          => (is  => 'rw', isa => 'Port',     default => 8080);
 has 'replyTimeout'  => (is  => 'rw', isa => 'Int',      default => 10);
 has 'sessionId'     => (is  => 'rw', isa => 'Int');
+
+=item C<handlers>
+
+Moose hash of handlers that the server currently supports, having handler.id as key
+
+The Moose system provides several helper methods: I<addHandler>, I<getHandler>, I<hasHandler>, I<clearHandlers>
+
+=back
+
+=cut 
 has 'handlers'      => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler]',
                         traits  => ['Hash'], 
                         handles => {addHandler      => 'set',
@@ -34,7 +63,15 @@ has 'handlers'      => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Cir
                                     hasHandler      => 'exists',
                                     clearHandlers   => 'clear'});
 
-# Starts a WEB server (using POE::Component::Server::TCP)
+=head1 METHODS
+
+=over
+ 
+=item C<startServer>
+
+Starts this Http server on the given hostname and port
+
+=cut
 sub startServer {
     my ($self, $hostname, $port, $timeout) = @_;
 
@@ -113,7 +150,11 @@ sub startServer {
     $self->sessionId($sessionId);
 }
 
-# Stops the server
+=item C<stopServer>
+
+Stops the server
+
+=cut
 # TODO: Check how this call behaves when we're in the process of replying to someone...
 sub stopServer {
     my $self = shift;
@@ -127,10 +168,14 @@ sub stopServer {
     POE::Kernel->post($self->sessionId, 'shutdown');
 }
 
-# This method handles POST requests encoded as x-www-form-urlencoded or json data
-# We only allow POST requests when *updating* the data
-# Once the arguments have been retrieved, the action (postback) will be called with
-# these parameters and a reply will be sent (HTTP_OK)
+=item C<handlePostRequest>
+
+This method handles POST requests encoded as x-www-form-urlencoded or json data.
+We only allow POST requests when *updating* the data.
+Once the arguments have been retrieved, the action (postback) will be called with 
+these parameters and a reply will be sent (HTTP_OK).
+
+=cut
 sub handlePostRequest {
     my ($self, $kernel, $heap, $request, $handler) = @_;
 
@@ -186,12 +231,16 @@ sub handlePostRequest {
     $handler->getCallback()->($postArguments);
 }
 
-# This method handles GET requests. We can only send back json objects as replies (application/json)
-# We only allow GET methods to retrieve data (no updating).
-# This class is not the one that's getting the data. We first need to call the action associated
-# with the URI requested, then when results are back, reply to the client.
-# To do this, we produce a postback here, which is passed as argument when calling the action
-# The client must call this postback in order to reply to the client with the required data
+=item C<handleGetRequest>
+
+This method handles GET requests. We can only send back json objects as replies (application/json)
+We only allow GET methods to retrieve data (no updating).
+This class is not the one that's getting the data. We first need to call the action associated
+with the URI requested, then when results are back, reply to the client.
+To do this, we produce a postback here, which is passed as argument when calling the action.
+The server must call this postback in order to reply to the client with the required data
+
+=cut
 sub handleGetRequest {
     my ($self, $kernel, $session, $heap, $request, $handler) = @_;
 
@@ -225,9 +274,13 @@ sub handleGetRequest {
     $handler->getCallback()->($getArguments, $callMeBack);
 }
 
-# A postback will be created and handed to a client whenever someone requests data (via GET)
-# The client will call this postback with the PERL object that it wants to send.
-# This object will then be encoded in JSON and sent back to the requestor
+=item C<returnData>
+
+A postback will be created and handed to a client whenever someone requests data (via GET)
+The client will call this postback with the PERL object that it wants to send.
+This object will then be encoded in JSON and sent back to the requestor
+
+=cut
 sub returnData {
     my ($kernel, $session, $initialArgs, $passedArgs) = @_[KERNEL, SESSION, ARG0, ARG1];
 
@@ -244,6 +297,13 @@ sub returnData {
     sendHttpReply->($kernel, $heap, HTTP_OK, "application/json", $jsonObject);
 }
 
+=item C<sendHttpReply>
+
+Sends back an Http reply
+
+=back
+
+=cut
 sub sendHttpReply {
     my ($kernel, $heap, $status, $contentType, $message) = @_;
     my $response = HTTP::Response->new($status);

@@ -1,3 +1,23 @@
+=head1 NAME
+
+Helpers::HTTP::HttpClient - Spawns an HTTP Client
+
+=head1 DESCRIPTION
+
+This helper class spawns a simple HTTP Client that supports GET and POST methods
+
+In the case of GET methods, arguments are URL encoded.
+
+In the case of POST methods, arguments can be passed either in:
+
+    -FORM mode
+    
+    -TEXT format
+    
+    -JSON format
+
+=cut
+
 package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpClient;
 
 use Moose;
@@ -19,8 +39,19 @@ has 'uaAlias'   => (is  => 'rw', isa => 'Str', default => 'poeHttpClient');
 has 'uaTimeout' => (is  => 'rw', isa => 'Int', default => 5);
 has 'spawned'   => (is  => 'rw', isa => 'Bool', default => 0);
 
-# Starts the client
-# The client will keep connections alive for more 15 seconds, in case multiple requests will be made to the same address
+
+=head1 METHODS
+
+=over
+ 
+=item C<spawn>
+
+Starts the client.
+
+The client will keep connections alive for more 15 seconds, 
+in case multiple requests will be made.
+
+=cut
 sub spawn {
     my $self = shift;
 
@@ -39,8 +70,12 @@ sub spawn {
     $self->spawned(1);
 }
 
-# Calls the client's 'shutdown' state which in turn, responds to all pending requests with
-# 408 (request timeout), and then shuts down the component and all subcomponents
+=item C<unspawn>
+
+Calls the client's 'shutdown' state which in turn, responds to all pending requests with
+ 408 (request timeout), and then shuts down the component and all subcomponents
+
+=cut
 sub unspawn {
     my $self = shift;
 
@@ -55,8 +90,12 @@ sub unspawn {
      $self->spawned(0)
 }
 
-# HTTP GET: only used to retrieve data from the URL. Arguments can be specified
-# These arguments however need to be specified as hashes
+=item C<httpRequest>
+
+Takes in a Moose HttpRequest object which will then be used to issue
+either a GET or a POST request (based on HttpRequest.method)
+ 
+=cut
 sub httpRequest {
     my ($self, $request) = @_;
 
@@ -181,6 +220,13 @@ sub httpRequest {
     );
 }
 
+=item C<replyOk>
+
+Checks an http response to see if our request succeeded or not
+
+=back
+
+=cut
 sub replyOk {
     my ($self, $httpResponse) = @_;
 

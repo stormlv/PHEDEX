@@ -1,3 +1,26 @@
+=head1 NAME
+
+Helpers::HTTP::HttpHandler - Describes which event handles a URI request
+
+=head1 DESCRIPTION
+
+This object is used in the HttpServer to define which event needs to be 
+triggered when a client makes a call to a given URI supported by the server.
+
+An example handler would be:
+
+Helpers::HTTP::HttpHandler(method => 'GET', uri => '/', eventName => 'postbackForGetHandler', session => $session);
+
+This handler defines that the I<postbackForGetHandler> event should be called if a someone issues a GET request to the / URI
+
+When constructing it, it requires:
+
+    - the event name (and session) handling the URI
+    
+    - the method and URI to be handled
+
+=cut
+
 package PHEDEX::File::Download::Circuits::Helpers::HTTP::HttpHandler;
 
 use Moose;
