@@ -1,3 +1,14 @@
+=head1 NAME
+
+Helpers::Tasks::TaskManager - Task manager mainly used by the backends
+
+=head1 DESCRIPTION
+
+This is a helper class, allowing running and interaction with external processes.
+
+It allows for multiple different tasks to be run at the same time.
+
+=cut
 package PHEDEX::File::Download::Circuits::Helpers::Tasks::TaskManager;
 
 use Moose;
@@ -18,6 +29,19 @@ use constant {
     EXTERNAL_TASK                   =>          3,
 };
 
+=head1 ATTRIBUTES
+
+=item C<runningTasks>
+
+=over
+
+Moose hash of Helpers::Tasks::Task objects having the task PID as key.
+
+The Moose system provides several helper methods: I<addTask>, I<getTask>, I<hasTask>, I<removeTask> and I<clearTasks>
+
+=back
+
+=cut 
 has 'runningTasks'  => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Circuits::Helpers::Tasks::Task]',
                         traits  => ['Hash'], 
                         handles => {addTask     => 'set',
@@ -27,11 +51,22 @@ has 'runningTasks'  => (is  => 'ro', isa => 'HashRef[PHEDEX::File::Download::Cir
                                     clearTasks  => 'clear'});
 has 'verbose'       => (is  => 'rw', isa => 'Bool', default => 0);
 
-# Launches an external command
-# If an action is specified (callback/postback), it will be called for each event (STDOUT, STDERR, SIGCHLD)
-# with the following arguments: PID, source event name, output
-# If a timeout is specified (in seconds), the task will be terminated (via SIGINT) if no output is received
-# from STDOUT/STDERR withing the allotted time frame
+=head1 METHODS
+
+=over
+ 
+=item C<startCommand>
+
+Launches an external process. If an action is specified (callback/postback), 
+it will be called for each event (STDOUT, STDERR, SIGCHLD) with the following 
+arguments: 
+    
+    PID, source event name, output
+
+If a timeout is specified (in seconds), the task will be terminated 
+(via SIGINT) if no output is received from STDOUT/STDERR withing the allotted time frame
+
+=cut
 sub startCommand {
     my ($self, $command, $action, $timeout) = @_;
 
@@ -104,10 +139,16 @@ sub startCommand {
     return $pid;
 }
 
-# Wheel event for both the StdOut and StdErr output
-# The action specified for this task will be called with
-# with the following parameters (PID, event name, output)
-# Output will be handled to the specified action and parsed there (not by this class)
+=item C<handleTaskStdOut>
+
+Wheel event for both the StdOut and StdErr output. The action specified for this task will be called with
+ with the following parameters:
+    
+    PID, event name, output
+    
+Output will be handled to the specified action and parsed there (not by this class)
+
+=cut
 sub handleTaskStdOut {
     my ($self, $sendingEvent, $heap, $output, $wheelId) = @_[OBJECT, STATE, HEAP, ARG0, ARG1];
 
@@ -133,8 +174,11 @@ sub handleTaskStdOut {
     }
 }
 
-# Wheel event when the task closes its output handle
-# This might or might not be used in the future...
+=item C<handleTaskClose>
+
+Wheel event when the task closes its output handle.
+
+=cut
 sub handleTaskClose {
     my ($self, $sendingEvent, $heap, $wheelId) = @_[OBJECT, STATE, HEAP, ARG0];
 
@@ -143,9 +187,12 @@ sub handleTaskClose {
     $self->Logmsg("$msg: Task closed its last output handle");
 }
 
-# Signal event when the child exists
-# If there's an action to be done, it will be called
-# Cleanup is done when everything is finished
+=item C<handleTaskSignal>
+
+Signal event when the child exists. If there's an action to be done, it will be called.
+Cleanup is done when everything is finished
+
+=cut
 sub handleTaskSignal {
     my ($self, $sendingEvent, $heap, $pid) = @_[OBJECT, STATE, HEAP, ARG1];
 
@@ -166,8 +213,12 @@ sub handleTaskSignal {
     }
 }
 
-# Event called in case the tool does not reply within a given time
-# This only applied if a timeout has been specified when 'startCommand' was issued
+=item C<handleTaskTimeout>
+
+Event called in case the tool does not reply within a given time.
+This only applies if a timeout has been specified when 'startCommand' was issued.
+
+=cut
 sub handleTaskTimeout {
     my ($self, $kernel, $session, $sendingEvent, $heap, $pid) = @_[OBJECT, KERNEL, SESSION, STATE, ARG0, ARG1];
 
@@ -178,7 +229,11 @@ sub handleTaskTimeout {
     $self->kill_task($pid);
 }
 
-# Re-adjusts the alarm since the task  is still alive
+=item C<timerTick>
+
+Re-adjusts the alarm since the task is still alive
+
+=cut
 sub timerTick {
     my ($self, $pid) = @_;
     my $taskWrapper = $self->getTask($pid);
@@ -187,9 +242,15 @@ sub timerTick {
     }
 }
 
-# Cleans up the heap
-# Removes defunct references from $self
-# Removes the timeout timer that might have been set
+=item C<cleanupTask>
+
+- Cleans up the heap
+
+- Removes defunct references from $self
+
+- Removes the timeout timer that might have been set
+
+=cut
 sub cleanupTask {
     my ($self, $heap, $task) = @_;
 
@@ -215,8 +276,15 @@ sub cleanupTask {
     $self->removeTask($pid);
 }
 
-# Sends a SIGINT signal to the task
-# TODO: Use a new timer in case this won't respond to it
+=item C<kill_task>
+
+- Sends a SIGINT signal to the task
+
+- TODO: Use a new timer in case this won't respond to it
+
+=back
+
+=cut
 sub kill_task {
     my ($self, $pid) = @_;
 
