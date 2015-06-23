@@ -1,3 +1,20 @@
+=head1 NAME
+
+Backend::Other::Dummy - Dummy backend, only used for testing
+
+=head1 DESCRIPTION
+
+This backend extends the Core::Core class and provides dummy output 
+for all the requests (backendRequestResource, backendUpdateResource, backendTeardownResource) 
+coming from the ResourceManager (or any other entity).
+
+A timeSimulation attribute can be set which simulates the time delay (in seconds)
+ to get a reply from the backend.
+
+By default only a combination of the following nodes is a valid path on which you can request
+circuits: T2_ANSE_CERN_Dev, T2_ANSE_CERN_0, T2_ANSE_CERN_1, T2_ANSE_CERN_2
+=cut
+
 package PHEDEX::File::Download::Circuits::Backend::Other::Dummy;
 
 use Moose;
@@ -12,7 +29,7 @@ use PHEDEX::File::Download::Circuits::ManagedResource::Core::Node;
 use PHEDEX::File::Download::Circuits::ManagedResource::Core::Path;
 use PHEDEX::File::Download::Circuits::ManagedResource::NetworkResource;
 
-has 'timeSimulation'    => (is  => 'rw', isa => 'Num', default => 5);                   # Simulates the time (in seconds) delay to get a reply from the backend
+has 'timeSimulation'    => (is  => 'rw', isa => 'Num', default => 5); # 
 
 sub BUILD {
     my $self = shift;
@@ -40,6 +57,16 @@ override '_poe_init' => sub {
     $kernel->state('delayedAction', $self);
 };
 
+=head1 METHODS
+
+=over
+ 
+=item C<backendRequestResource>
+
+Extended method from Core::Core. If the timesimulation is >= 0, the request will be delayed, but will succeed.
+If it is negative, the request will fail.
+
+=cut
 override 'backendRequestResource' => sub {
     my ($self, $kernel, $session, $request) = @_[ OBJECT, KERNEL, SESSION, ARG0];
     super();
@@ -58,6 +85,13 @@ override 'backendRequestResource' => sub {
     }
 };
 
+=item C<backendUpdateResource>
+
+Extended method from Core::Core. Same as for backendRequestResource,
+if the timesimulation is >= 0, the request will be delayed, but will succeed.
+If it is negative, the request will fail.
+
+=cut
 override 'backendUpdateResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
@@ -70,6 +104,13 @@ override 'backendUpdateResource' => sub {
     }
 };
 
+=item C<backendTeardownResource>
+
+Extended method from Core::Core. Removes the resource from active and calls back with TERMINATE_SUCCEEDED
+
+=back
+
+=cut
 override 'backendTeardownResource' => sub {
     my ($self, $kernel, $session, $resource, $callback) = @_[ OBJECT, KERNEL, SESSION, ARG0, ARG1];
     super();
